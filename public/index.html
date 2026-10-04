@@ -51,7 +51,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: env(safe-area-inset-top, 24px) 20px env(safe-area-inset-bottom, 24px) 20px;
+            padding: env(safe-area-inset-top, 20px) 20px env(safe-area-inset-bottom, 20px) 20px;
         }
 
         /* Top Bar */
@@ -119,18 +119,18 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .brand-logo {
-            width: 64px;
-            height: 64px;
-            margin-bottom: 10px;
+            width: 56px;
+            height: 56px;
+            margin-bottom: 8px;
             filter: drop-shadow(0 0 16px var(--neon-cyan-glow));
         }
 
         .brand-title {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 800;
             letter-spacing: -0.5px;
             background: linear-gradient(135deg, #ffffff 40%, var(--neon-cyan));
@@ -145,14 +145,14 @@
             margin-top: 2px;
         }
 
-        /* STEALTH SHIELD BANNER */
-        .stealth-status-banner {
+        /* EXPLICIT ON/OFF NETWORK MODE SWITCH */
+        .network-mode-card {
             width: 100%;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            border-radius: 14px;
-            padding: 10px 14px;
-            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 12px 16px;
+            margin-bottom: 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -160,25 +160,43 @@
             transition: all 0.2s;
         }
 
-        .stealth-banner-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .network-mode-card.stealth-active {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.4);
         }
 
-        .stealth-icon-badge {
-            font-size: 20px;
+        .mode-info {
+            text-align: left;
         }
 
-        .stealth-text-title {
+        .mode-badge {
             font-size: 13px;
             font-weight: 700;
             color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
-        .stealth-text-desc {
+        .mode-desc {
             font-size: 11px;
             color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .toggle-pill {
+            background: #334155;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .network-mode-card.stealth-active .toggle-pill {
+            background: var(--neon-emerald);
+            color: #000000;
         }
 
         /* Country Presets */
@@ -205,7 +223,7 @@
 
         .input-box {
             width: 100%;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
 
         .target-phone-input {
@@ -397,7 +415,7 @@
         .action-decline { background: var(--danger-red); box-shadow: 0 8px 24px var(--danger-red-glow); }
         .action-accept { background: var(--neon-emerald); box-shadow: 0 8px 24px var(--neon-emerald-glow); }
 
-        /* 4. ACTIVE CALL VIEW (NO MORE BLACK SCREEN!) */
+        /* 4. ACTIVE CALL VIEW */
         #activeCallScreen {
             display: none;
             position: absolute;
@@ -422,7 +440,7 @@
             background: #000;
         }
 
-        /* Dedicated Audio Call Surface (Shown on Voice Calls) */
+        /* Dedicated Audio Call Surface */
         #voiceCallLayer {
             width: 100%;
             height: 100%;
@@ -445,7 +463,6 @@
             font-size: 54px;
             margin-bottom: 24px;
             box-shadow: 0 0 40px var(--neon-emerald-glow);
-            position: relative;
         }
 
         .voice-peer-title {
@@ -465,7 +482,6 @@
             margin-bottom: 24px;
         }
 
-        /* Soundwave volume bars */
         .live-wave-container {
             display: flex;
             align-items: center;
@@ -481,7 +497,7 @@
             transition: height 0.08s ease;
         }
 
-        /* Video Connecting Placeholder (Prevents black screen while video connects) */
+        /* Video Connecting Placeholder */
         #videoConnectingPlaceholder {
             position: absolute;
             inset: 0;
@@ -618,6 +634,7 @@
 
         .form-row {
             margin-bottom: 16px;
+            text-align: left;
         }
 
         .form-row label {
@@ -680,15 +697,13 @@
                     <span class="brand-subtitle">Encrypted Voice & Video Line</span>
                 </div>
 
-                <!-- STEALTH SHIELD BANNER -->
-                <div id="stealthBanner" class="stealth-status-banner">
-                    <div class="stealth-banner-info">
-                        <span class="stealth-icon-badge">🛡️</span>
-                        <div>
-                            <div class="stealth-text-title">Stealth Protocol Active</div>
-                            <div class="stealth-text-desc">Encrypted Direct & Cloud Relay Line</div>
-                        </div>
+                <!-- EXPLICIT NETWORK MODE TOGGLE CARD (EASY ON/OFF) -->
+                <div id="networkModeCard" class="network-mode-card" onclick="toggleStealthMode()">
+                    <div class="mode-info">
+                        <div id="networkModeTitle" class="mode-badge">⚡ Direct Fast Mode</div>
+                        <div id="networkModeDesc" class="mode-desc">Direct P2P + STUN. Tap to switch to Stealth 443.</div>
                     </div>
+                    <div id="networkModePill" class="toggle-pill">DIRECT</div>
                 </div>
 
                 <!-- Country Selector Chips -->
@@ -763,7 +778,7 @@
             <div id="videoLayer">
                 <video id="remoteVideo" autoplay playsinline></video>
 
-                <!-- Video Connecting Spinner (Shown until first video frame arrives) -->
+                <!-- Video Connecting Spinner -->
                 <div id="videoConnectingPlaceholder">
                     <div class="spinner"></div>
                     <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Connecting Video Stream...</div>
@@ -776,7 +791,7 @@
                 </div>
             </div>
 
-            <!-- LAYER B: VOICE CALL SURFACE (Prevents black screen on audio calls!) -->
+            <!-- LAYER B: VOICE CALL SURFACE -->
             <div id="voiceCallLayer">
                 <div class="voice-avatar-glow">
                     <span>🎙️</span>
@@ -799,7 +814,7 @@
                 <span id="activeCallPeerLabel">+91...</span>
                 <span>•</span>
                 <span id="activeCallTimer" style="color:var(--neon-emerald)">00:00</span>
-                <span>🛡️</span>
+                <span id="activeCallModeIcon">⚡</span>
             </div>
 
             <!-- Bottom Floating Control Glass Bar -->
@@ -826,15 +841,25 @@
         </div>
     </div>
 
-    <!-- Settings Modal -->
+    <!-- Settings Modal (With Explicit Uncheck Option) -->
     <div id="settingsModal" class="modal-overlay">
         <div class="modal-body">
-            <h2 class="modal-heading">Call Tuning</h2>
+            <h2 class="modal-heading">Call & Network Settings</h2>
+
+            <div class="form-row" style="background:rgba(255,255,255,0.06); padding:12px; border-radius:12px; margin-bottom:16px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; text-transform:none; font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">
+                    <input type="checkbox" id="forceRelayCheckbox" style="width:20px; height:20px; accent-color:var(--neon-emerald);" onchange="onRelayCheckboxChanged(this.checked)">
+                    <span>Force TCP Port 443 Relay</span>
+                </label>
+                <div style="font-size:11px; color:var(--text-muted); margin-left:30px;">
+                    Uncheck to use Fast Direct Mode (P2P + STUN). Check only if your ISP blocks direct calls.
+                </div>
+            </div>
 
             <div class="form-row">
                 <label>Audio Bitrate</label>
                 <select id="bitrateSelect">
-                    <option value="12000" selected>12 kbps (Recommended)</option>
+                    <option value="12000" selected>12 kbps (Optimized Speech)</option>
                     <option value="16000">16 kbps (High Quality)</option>
                 </select>
             </div>
@@ -842,7 +867,7 @@
             <div class="form-row">
                 <label>Video Quality</label>
                 <select id="videoQualitySelect">
-                    <option value="low" selected>360p (Saves Data)</option>
+                    <option value="low" selected>360p (Fast / Saves Data)</option>
                     <option value="medium">480p (Standard)</option>
                     <option value="high">720p (HD)</option>
                 </select>

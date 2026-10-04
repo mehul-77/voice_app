@@ -1,8 +1,12 @@
-// StealthVoice Client Engine (v5.0 - Resilient Video & Voice Architecture)
+// StealthVoice Client Engine (v6.0 - Direct/Stealth Dual Engine)
 let ws = null;
 let pc = null;
 let localStream = null;
 let myNumber = localStorage.getItem('sv_my_number') || '';
+
+// Default to Direct Fast Mode (P2P + STUN) so calls connect immediately without failing on dead relays
+let isStealthMode = localStorage.getItem('sv_stealth_active') === 'true'; // false by default
+
 let currentCallTarget = null;
 let isAudioMuted = false;
 let isVideoMuted = false;
@@ -16,27 +20,26 @@ let ringbackInterval = null;
 let waveAnimationInterval = null;
 let pendingIncomingCall = null;
 
-// Multi-network ICE configuration with Google STUN, Cloudflare STUN, and OpenRelay TURN
-const rtcConfig = {
-    iceCandidatePoolSize: 10,
-    iceTransportPolicy: 'all', // Allows direct P2P, STUN, and automatic TURN fallback
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
-        { urls: 'stun:stun.services.mozilla.com:3478' },
-        {
-            urls: [
-                'turn:openrelay.metered.ca:80',
-                'turn:openrelay.metered.ca:443',
-                'turns:openrelay.metered.ca:443?transport=tcp'
-            ],
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        }
-    ]
-};
+// Multi-network ICE configuration
+const defaultStunServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com:3478' }
+];
+
+const fallbackTurnServers = [
+    {
+        urls: [
+            'turns:openrelay.metered.ca:443?transport=tcp',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:80'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    }
+];
 
 // UI Elements
 const dialerScreen = document.getElementById('dialerScreen');
@@ -45,6 +48,13 @@ const incomingScreen = document.getElementById('incomingScreen');
 const activeCallScreen = document.getElementById('activeCallScreen');
 const setupModal = document.getElementById('setupModal');
 const settingsModal = document.getElementById('settingsModal');
+
+const networkModeCard = document.getElementById('networkModeCard');
+const networkModeTitle = document.getElementById('networkModeTitle');
+const networkModeDesc = document.getElementById('networkModeDesc');
+const networkModePill = document.getElementById('networkModePill');
+const forceRelayCheckbox = document.getElementById('forceRelayCheckbox');
+const activeCallModeIcon = document.getElementById('activeCallModeIcon');
 
 const videoLayer = document.getElementById('videoLayer');
 const voiceCallLayer = document.getElementById('voiceCallLayer');
@@ -76,7 +86,7 @@ const flipCamBtn = document.getElementById('flipCamBtn');
 const bitrateSelect = document.getElementById('bitrateSelect');
 const videoQualitySelect = document.getElementById('videoQualitySelect');
 
-// --- 1. Sound Synthesizers (Unique Futuristic Encrypted Line Chimes) ---
+// --- 1. Sound Synthesizers ---
 let audioCtx = null;
 function getAudioContext() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -137,8 +147,41 @@ function stopRingtones() {
     if (ringbackInterval) { clearInterval(ringbackInterval); ringbackInterval = null; }
 }
 
-// --- 2. Identity & Phone Setup ---
+// --- 2. Identity & Network Mode Toggling (Uncheck / Check on Phone) ---
+function updateNetworkModeUI() {
+    if (isStealthMode) {
+        networkModeCard.classList.add('stealth-active');
+        networkModeTitle.innerHTML = '🛡️ Stealth 443 Relay';
+        networkModeDesc.innerText = 'Forced TCP Port 443 relay. Tap to uncheck / switch to Direct.';
+        networkModePill.innerText = 'STEALTH';
+        forceRelayCheckbox.checked = true;
+        activeCallModeIcon.innerText = '🛡️';
+    } else {
+        networkModeCard.classList.remove('stealth-active');
+        networkModeTitle.innerHTML = '⚡ Direct Fast Mode';
+        networkModeDesc.innerText = 'Direct P2P + STUN. Fast & reliable. Tap to switch.';
+        networkModePill.innerText = 'DIRECT';
+        forceRelayCheckbox.checked = false;
+        activeCallModeIcon.innerText = '⚡';
+    }
+}
+
+function toggleStealthMode() {
+    isStealthMode = !isStealthMode;
+    localStorage.setItem('sv_stealth_active', isStealthMode);
+    updateNetworkModeUI();
+    showToast(isStealthMode ? '🛡️ Stealth Mode Enabled (Port 443)' : '⚡ Direct Fast Mode Enabled (STUN + P2P)');
+}
+
+function onRelayCheckboxChanged(checked) {
+    isStealthMode = checked;
+    localStorage.setItem('sv_stealth_active', isStealthMode);
+    updateNetworkModeUI();
+    showToast(isStealthMode ? '🛡️ Forced Port 443 Relay' : '⚡ Unchecked: Using Direct Fast Mode');
+}
+
 function checkMyNumber() {
+    updateNetworkModeUI();
     if (!myNumber) {
         setupModal.style.display = 'flex';
     } else {
@@ -249,7 +292,7 @@ function connectSignaling() {
     };
 }
 
-// Pre-unlock mobile browser audio/video inside click gesture
+// Unlock audio/video autoplay on mobile touch
 function unlockMediaEngine() {
     getAudioContext();
     remoteAudio.play().catch(()=>{});
@@ -269,7 +312,7 @@ async function initiateCall(type = 'video') {
 
     outgoingTargetText.innerText = target;
     outgoingAvatar.innerText = isVideoCallActive ? '👁️' : '🎙️';
-    outgoingStatusText.innerText = 'Connecting encrypted line...';
+    outgoingStatusText.innerText = isStealthMode ? 'Connecting via Port 443 Relay...' : 'Connecting direct tunnel...';
     outgoingScreen.style.display = 'flex';
 
     try {
@@ -439,7 +482,19 @@ async function acquireLocalMedia(withVideo) {
 function initPeerConnection() {
     if (pc) return;
 
-    pc = new RTCPeerConnection(rtcConfig);
+    const conf = {
+        iceCandidatePoolSize: 10,
+        iceServers: [...defaultStunServers, ...fallbackTurnServers]
+    };
+
+    // If user explicitly checked Force Relay in UI:
+    if (isStealthMode) {
+        conf.iceTransportPolicy = 'relay';
+    } else {
+        conf.iceTransportPolicy = 'all'; // Direct P2P + STUN + auto-fallback to relay
+    }
+
+    pc = new RTCPeerConnection(conf);
 
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -457,7 +512,7 @@ function initPeerConnection() {
             remoteVideo.playsInline = true;
             remoteVideo.play().catch(()=>{});
 
-            // Once remote video is active, hide connecting overlay
+            // Hide connecting overlay as soon as video stream arrives
             videoConnectingPlaceholder.style.display = 'none';
         }
     };
@@ -474,8 +529,10 @@ function initPeerConnection() {
     pc.oniceconnectionstatechange = () => {
         if (!pc) return;
         console.log('[WebRTC] ICE Connection State:', pc.iceConnectionState);
-        if (pc.iceConnectionState === 'disconnected') {
-            showToast('Temporary signal drop. Reconnecting...');
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            videoConnectingPlaceholder.style.display = 'none';
+        } else if (pc.iceConnectionState === 'failed') {
+            showToast('Relay connection failed. Uncheck Force Relay to use Direct Mode.');
         }
     };
 }
