@@ -1,11 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#10b981" />
-      <stop offset="100%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#0284c7" />
     </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="128" fill="#0f172a" />
-  <circle cx="256" cy="256" r="160" fill="url(#grad)" />
-  <path fill="#ffffff" d="M344 316c-18 0-35-5-50-14l-25 25c-35-18-64-47-82-82l25-25c-9-15-14-32-14-50 0-9-7-16-16-16h-44c-9 0-16 7-16 16 0 128 104 232 232 232 9 0 16-7 16-16v-44c0-9-7-16-16-16z"/>
+  <!-- Background -->
+  <rect width="512" height="512" rx="120" fill="#090d16" />
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#1e293b" stroke-width="4" stroke-dasharray="8 8" />
+  
+  <!-- Outer Shield Outline -->
+  <path d="M256 90 L380 144 C380 270 256 380 256 420 C256 380 132 270 132 144 Z" 
+        fill="url(#shieldGrad)" opacity="0.18" />
+  <path d="M256 90 L380 144 C380 270 256 380 256 420 C256 380 132 270 132 144 Z" 
+        fill="none" stroke="url(#shieldGrad)" stroke-width="12" stroke-linejoin="round" />
+
+  <!-- Audio Waveform / Optic Core -->
+  <g filter="url(#neonGlow)">
+    <line x1="200" y1="230" x2="200" y2="280" stroke="url(#glowGrad)" stroke-width="10" stroke-linecap="round" />
+    <line x1="228" y1="200" x2="228" y2="310" stroke="url(#glowGrad)" stroke-width="10" stroke-linecap="round" />
+    <line x1="256" y1="180" x2="256" y2="330" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+    <line x1="284" y1="200" x2="284" y2="310" stroke="url(#glowGrad)" stroke-width="10" stroke-linecap="round" />
+    <line x1="312" y1="230" x2="312" y2="280" stroke="url(#glowGrad)" stroke-width="10" stroke-linecap="round" />
+  </g>
+  
+  <!-- Security Lock Dot -->
+  <circle cx="256" cy="370" r="10" fill="#38bdf8" />
 </svg>

@@ -1,12 +1,12 @@
 {
-  "name": "StealthVoice Call",
+  "name": "StealthVoice",
   "short_name": "StealthVoice",
-  "description": "Ultra-lightweight secure voice calling for weak networks",
+  "description": "Encrypted direct voice & video calling for restricted networks",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0a0e17",
-  "theme_color": "#0a0e17",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
   "icons": [
     {
       "src": "/icon.svg",

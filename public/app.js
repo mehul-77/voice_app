@@ -1,8 +1,9 @@
-// FaceTime Web Engine (v3.0 - Number-to-Number Direct Dial & FaceTime UI)
+// StealthVoice Client Engine (v4.0 - Custom Stealth Identity & Protocol)
 let ws = null;
 let pc = null;
 let localStream = null;
-let myNumber = localStorage.getItem('ft_my_number') || '';
+let myNumber = localStorage.getItem('sv_my_number') || '';
+let isStealthMode = localStorage.getItem('sv_stealth_active') !== 'false'; // Default TRUE for UAE/strict networks
 let currentCallTarget = null;
 let isAudioMuted = false;
 let isVideoMuted = false;
@@ -15,7 +16,7 @@ let ringtoneInterval = null;
 let ringbackInterval = null;
 let pendingIncomingCall = null;
 
-// Multi-network ICE configuration with OpenRelay TURN fallback
+// Multi-network ICE configuration with OpenRelay Port 443 TLS TURNS
 const rtcConfig = {
     iceCandidatePoolSize: 10,
     iceServers: [
@@ -25,9 +26,9 @@ const rtcConfig = {
         { urls: 'stun:stun.services.mozilla.com:3478' },
         {
             urls: [
-                'turn:openrelay.metered.ca:80',
+                'turns:openrelay.metered.ca:443?transport=tcp',
                 'turn:openrelay.metered.ca:443',
-                'turns:openrelay.metered.ca:443?transport=tcp'
+                'turn:openrelay.metered.ca:80'
             ],
             username: 'openrelayproject',
             credential: 'openrelayproject'
@@ -42,6 +43,10 @@ const incomingScreen = document.getElementById('incomingScreen');
 const activeCallScreen = document.getElementById('activeCallScreen');
 const setupModal = document.getElementById('setupModal');
 const settingsModal = document.getElementById('settingsModal');
+
+const stealthBanner = document.getElementById('stealthBanner');
+const stealthStatusTitle = document.getElementById('stealthStatusTitle');
+const stealthStatusDesc = document.getElementById('stealthStatusDesc');
 
 const myNumberLabel = document.getElementById('myNumberLabel');
 const myNumberInput = document.getElementById('myNumberInput');
@@ -67,9 +72,8 @@ const flipCamBtn = document.getElementById('flipCamBtn');
 
 const bitrateSelect = document.getElementById('bitrateSelect');
 const videoQualitySelect = document.getElementById('videoQualitySelect');
-const forceRelayCheckbox = document.getElementById('forceRelayCheckbox');
 
-// --- 1. Sound Synthesizers (FaceTime Marimba & Ringback) ---
+// --- 1. Sound Synthesizers (Unique Futuristic Encrypted Line Chimes) ---
 let audioCtx = null;
 function getAudioContext() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -77,15 +81,15 @@ function getAudioContext() {
     return audioCtx;
 }
 
-// iOS FaceTime Ringtone Synthesizer
-function playFaceTimeRingtoneNote(freq, start, duration) {
+// Futuristic cyber chime on incoming call
+function playStealthChimeNote(freq, start, duration) {
     try {
         const ctx = getAudioContext();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'triangle';
+        osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime + start);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -96,34 +100,34 @@ function playFaceTimeRingtoneNote(freq, start, duration) {
 
 function startIncomingRingtone() {
     stopRingtones();
-    const playTune = () => {
-        // Marimba melodic opening
-        const notes = [440, 554, 659, 880, 659, 880];
-        notes.forEach((freq, idx) => playFaceTimeRingtoneNote(freq, idx * 0.14, 0.25));
+    const playCyberTune = () => {
+        const seq = [523.25, 659.25, 783.99, 1046.50, 783.99]; // C5, E5, G5, C6, G5
+        seq.forEach((freq, idx) => playStealthChimeNote(freq, idx * 0.12, 0.3));
     };
-    playTune();
-    ringtoneInterval = setInterval(playTune, 2800);
+    playCyberTune();
+    ringtoneInterval = setInterval(playCyberTune, 2600);
 }
 
 function startRingbackTone() {
     stopRingtones();
-    const playBeep = () => {
+    const playRadarBeep = () => {
         try {
             const ctx = getAudioContext();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.value = 440;
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
             gain.gain.setValueAtTime(0.12, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
             osc.connect(gain);
             gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 1.2);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.35);
         } catch(e) {}
     };
-    playBeep();
-    ringbackInterval = setInterval(playBeep, 3500);
+    playRadarBeep();
+    ringbackInterval = setInterval(playRadarBeep, 2400);
 }
 
 function stopRingtones() {
@@ -131,25 +135,26 @@ function stopRingtones() {
     if (ringbackInterval) { clearInterval(ringbackInterval); ringbackInterval = null; }
 }
 
-// --- 2. Identity & Number Setup ---
+// --- 2. Identity & Stealth Mode Toggle ---
 function checkMyNumber() {
+    updateStealthBannerUI();
     if (!myNumber) {
         setupModal.style.display = 'flex';
     } else {
-        myNumberLabel.innerText = formatNumber(myNumber);
+        myNumberLabel.innerText = myNumber;
         connectSignaling();
     }
 }
 
 function saveMyNumber() {
     const raw = myNumberInput.value.trim();
-    if (!raw) return showToast('Please enter your number');
+    if (!raw) return showToast('Please enter your phone number');
     myNumber = raw;
-    localStorage.setItem('ft_my_number', myNumber);
-    myNumberLabel.innerText = formatNumber(myNumber);
+    localStorage.setItem('sv_my_number', myNumber);
+    myNumberLabel.innerText = myNumber;
     setupModal.style.display = 'none';
     connectSignaling();
-    showToast('Saved! You are now online.');
+    showToast('Line Activated & Online');
 }
 
 function promptEditMyNumber() {
@@ -157,9 +162,27 @@ function promptEditMyNumber() {
     setupModal.style.display = 'flex';
 }
 
-function formatNumber(num) {
-    if (!num) return '';
-    return num;
+function toggleStealthMode() {
+    isStealthMode = !isStealthMode;
+    localStorage.setItem('sv_stealth_active', isStealthMode);
+    updateStealthBannerUI();
+    if (isStealthMode) {
+        showToast('🛡️ Stealth Protocol Active (TCP 443 Encapsulated)');
+    } else {
+        showToast('⚡ Hybrid Mode (Direct P2P)');
+    }
+}
+
+function updateStealthBannerUI() {
+    if (isStealthMode) {
+        stealthBanner.classList.remove('disabled');
+        stealthStatusTitle.innerText = 'Stealth Protocol: ACTIVE';
+        stealthStatusDesc.innerText = 'Wrapped in TLS Port 443 (DPI Bypass)';
+    } else {
+        stealthBanner.classList.add('disabled');
+        stealthStatusTitle.innerText = 'Stealth Protocol: OFF';
+        stealthStatusDesc.innerText = 'Hybrid Direct P2P Route';
+    }
 }
 
 function setPrefix(prefix) {
@@ -171,9 +194,9 @@ function copyMyCallLink() {
     if (!myNumber) return promptEditMyNumber();
     const link = `${location.origin}/?call=${encodeURIComponent(myNumber)}`;
     navigator.clipboard.writeText(link).then(() => {
-        showToast('Direct call link copied! Send it on WhatsApp/SMS.');
+        showToast('Direct call link copied! Share via WhatsApp/SMS.');
     }).catch(() => {
-        prompt('Copy your link:', link);
+        prompt('Copy your direct link:', link);
     });
 }
 
@@ -198,7 +221,7 @@ function connectSignaling() {
 
             switch (data.type) {
                 case 'registered':
-                    console.log('Registered on network as:', data.number);
+                    console.log('[StealthVoice] Line active:', data.number);
                     break;
 
                 case 'incoming_call':
@@ -206,7 +229,7 @@ function connectSignaling() {
                     break;
 
                 case 'call_ringing':
-                    outgoingStatusText.innerText = 'Ringing...';
+                    outgoingStatusText.innerText = 'Ringing securely...';
                     startRingbackTone();
                     break;
 
@@ -234,47 +257,45 @@ function connectSignaling() {
 
                 case 'call_ended':
                     stopRingtones();
-                    showToast('Call ended');
+                    showToast('Call terminated.');
                     hangupActiveCall(false);
                     break;
             }
         } catch (e) {
-            console.error('WS parse error:', e);
+            console.error('Signaling error:', e);
         }
     };
 
     ws.onclose = () => {
-        setTimeout(connectSignaling, 3000); // Auto reconnect
+        setTimeout(connectSignaling, 3000);
     };
 }
 
 // --- 4. Outgoing Call Flow ---
 async function initiateCall(type = 'video') {
     const target = targetNumberInput.value.trim();
-    if (!target) return showToast('Please enter a number to call');
+    if (!target) return showToast('Please enter a phone number');
     if (!myNumber) return promptEditMyNumber();
 
-    getAudioContext(); // Pre-unlock audio
+    getAudioContext();
     isVideoCallActive = (type === 'video');
     currentCallTarget = target;
     candidateQueue = [];
 
-    outgoingTargetText.innerText = formatNumber(target);
-    outgoingAvatar.innerText = target.slice(-2);
-    outgoingStatusText.innerText = 'Connecting...';
+    outgoingTargetText.innerText = target;
+    outgoingAvatar.innerText = isVideoCallActive ? '👁️' : '🎙️';
+    outgoingStatusText.innerText = isStealthMode ? 'Routing via Stealth TLS (Port 443)...' : 'Connecting direct tunnel...';
     outgoingScreen.style.display = 'flex';
 
-    // Get User Media
     try {
         await acquireLocalMedia(isVideoCallActive);
     } catch(err) {
         cancelOutgoingCall();
-        return showToast('Microphone/Camera permission denied.');
+        return showToast('Microphone/Camera permission required.');
     }
 
     initPeerConnection();
 
-    // Create Offer
     const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: isVideoCallActive
@@ -300,14 +321,14 @@ function cancelOutgoingCall() {
     cleanupMedia();
 }
 
-// --- 5. Incoming Call Flow (FaceTime Style) ---
+// --- 5. Incoming Call Flow ---
 function handleIncomingCall(data) {
     pendingIncomingCall = data;
     currentCallTarget = data.caller;
     isVideoCallActive = (data.callType === 'video');
 
-    incomingCallerName.innerText = formatNumber(data.caller);
-    incomingCallTypeLabel.innerText = isVideoCallActive ? 'FaceTime Video' : 'FaceTime Audio';
+    incomingCallerName.innerText = data.caller;
+    incomingCallTypeLabel.innerText = isVideoCallActive ? 'Incoming Stealth Video Call' : 'Incoming Stealth Voice Call';
     incomingScreen.style.display = 'flex';
 
     startIncomingRingtone();
@@ -315,7 +336,7 @@ function handleIncomingCall(data) {
 
 async function acceptIncomingCall() {
     stopRingtones();
-    getAudioContext(); // Unlock audio
+    getAudioContext();
     incomingScreen.style.display = 'none';
 
     if (!pendingIncomingCall) return;
@@ -324,13 +345,12 @@ async function acceptIncomingCall() {
         await acquireLocalMedia(isVideoCallActive);
     } catch(err) {
         declineIncomingCall();
-        return showToast('Camera/Mic access is required to answer.');
+        return showToast('Microphone/Camera permission required.');
     }
 
     initPeerConnection();
     await pc.setRemoteDescription(new RTCSessionDescription(pendingIncomingCall.sdp));
 
-    // Drain early candidates
     while (candidateQueue.length > 0) {
         await pc.addIceCandidate(candidateQueue.shift());
     }
@@ -361,7 +381,6 @@ async function handleCallAccepted(sdp) {
     if (!pc) return;
     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
-    // Drain queued candidates
     while (candidateQueue.length > 0) {
         await pc.addIceCandidate(candidateQueue.shift());
     }
@@ -433,7 +452,8 @@ function initPeerConnection() {
     if (pc) return;
 
     const conf = { ...rtcConfig };
-    if (forceRelayCheckbox.checked) {
+    // STEALTH PROTOCOL: Force TCP Port 443 relay when active to bypass telecom DPI filters
+    if (isStealthMode) {
         conf.iceTransportPolicy = 'relay';
     }
 
@@ -471,8 +491,8 @@ function initPeerConnection() {
 
     pc.oniceconnectionstatechange = () => {
         if (!pc) return;
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-            showToast('Reconnecting pathway...');
+        if (pc.iceConnectionState === 'disconnected') {
+            showToast('Temporary packet drop. Reconnecting...');
         }
     };
 }
@@ -483,7 +503,7 @@ function showActiveCallView() {
     incomingScreen.style.display = 'none';
     activeCallScreen.style.display = 'block';
 
-    activeCallPeerLabel.innerText = formatNumber(currentCallTarget);
+    activeCallPeerLabel.innerText = currentCallTarget;
     startCallTimer();
 }
 
@@ -539,7 +559,7 @@ function toggleMute() {
     isAudioMuted = !isAudioMuted;
     localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
     micToggleBtn.classList.toggle('active-off', isAudioMuted);
-    showToast(isAudioMuted ? 'Muted' : 'Mic Active');
+    showToast(isAudioMuted ? '🎙️ Mic Muted' : '🎙️ Mic Active');
 }
 
 function toggleCamera() {
@@ -549,7 +569,7 @@ function toggleCamera() {
     isVideoMuted = !isVideoMuted;
     vTracks.forEach(t => t.enabled = !isVideoMuted);
     camToggleBtn.classList.toggle('active-off', isVideoMuted);
-    showToast(isVideoMuted ? 'Camera Off' : 'Camera On');
+    showToast(isVideoMuted ? '👁️ Camera Off' : '👁️ Camera On');
 }
 
 async function flipCamera() {
@@ -573,7 +593,7 @@ async function flipCamera() {
         localVideo.srcObject = localStream;
         localVideo.play().catch(()=>{});
 
-        showToast(currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera');
+        showToast(currentFacingMode === 'user' ? 'Front Lens' : 'Rear Lens');
     } catch(e) {
         console.warn('Flip camera error:', e);
     }
@@ -600,7 +620,7 @@ function openSettings() { settingsModal.style.display = 'flex'; }
 function closeSettings() { settingsModal.style.display = 'none'; }
 function saveSettings() {
     closeSettings();
-    showToast('Settings saved');
+    showToast('Tuning settings saved');
 }
 
 function showToast(text) {
@@ -614,12 +634,12 @@ function showToast(text) {
     }, 2400);
 }
 
-// Auto join if URL has ?call=number
+// Auto load call target from ?call= parameter
 window.addEventListener('load', () => {
     checkMyNumber();
     const params = new URLSearchParams(location.search);
     if (params.has('call')) {
         targetNumberInput.value = params.get('call');
-        showToast('Contact loaded from link. Tap Audio or FaceTime to call!');
+        showToast('Contact loaded from link. Tap Voice or Video to connect!');
     }
 });

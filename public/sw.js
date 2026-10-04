@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stealthvoice-v2';
+const CACHE_NAME = 'stealthvoice-v3';
 const ASSETS = [
     '/',
     '/index.html',
