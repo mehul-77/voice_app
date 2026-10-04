@@ -21,7 +21,7 @@
             --neon-cyan-glow: rgba(56, 189, 248, 0.4);
             --danger-red: #ef4444;
             --danger-red-glow: rgba(239, 68, 68, 0.4);
-            --glass-btn: rgba(255, 255, 255, 0.08);
+            --glass-btn: rgba(255, 255, 255, 0.12);
             --text-primary: #ffffff;
             --text-muted: #94a3b8;
         }
@@ -145,10 +145,10 @@
             margin-top: 2px;
         }
 
-        /* STEALTH SHIELD BANNER (Prominent on Home) */
+        /* STEALTH SHIELD BANNER */
         .stealth-status-banner {
             width: 100%;
-            background: rgba(16, 185, 129, 0.1);
+            background: rgba(16, 185, 129, 0.12);
             border: 1px solid rgba(16, 185, 129, 0.35);
             border-radius: 14px;
             padding: 10px 14px;
@@ -158,11 +158,6 @@
             align-items: center;
             cursor: pointer;
             transition: all 0.2s;
-        }
-
-        .stealth-status-banner.disabled {
-            background: rgba(148, 163, 184, 0.1);
-            border-color: rgba(148, 163, 184, 0.25);
         }
 
         .stealth-banner-info {
@@ -184,34 +179,6 @@
         .stealth-text-desc {
             font-size: 11px;
             color: var(--text-muted);
-        }
-
-        .stealth-toggle-switch {
-            width: 44px;
-            height: 24px;
-            background: var(--neon-emerald);
-            border-radius: 12px;
-            position: relative;
-            transition: background 0.3s;
-        }
-
-        .stealth-status-banner.disabled .stealth-toggle-switch {
-            background: #334155;
-        }
-
-        .stealth-toggle-knob {
-            width: 20px;
-            height: 20px;
-            background: #ffffff;
-            border-radius: 50%;
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            transition: transform 0.3s;
-        }
-
-        .stealth-status-banner.disabled .stealth-toggle-knob {
-            transform: translateX(-20px);
         }
 
         /* Country Presets */
@@ -315,7 +282,7 @@
             display: none;
             position: absolute;
             inset: 0;
-            background: rgba(9, 13, 22, 0.95);
+            background: rgba(9, 13, 22, 0.96);
             backdrop-filter: blur(30px);
             z-index: 50;
             flex-direction: column;
@@ -430,22 +397,119 @@
         .action-decline { background: var(--danger-red); box-shadow: 0 8px 24px var(--danger-red-glow); }
         .action-accept { background: var(--neon-emerald); box-shadow: 0 8px 24px var(--neon-emerald-glow); }
 
-        /* 4. ACTIVE CALL VIEW */
+        /* 4. ACTIVE CALL VIEW (NO MORE BLACK SCREEN!) */
         #activeCallScreen {
             display: none;
             position: absolute;
             inset: 0;
-            background: #000;
+            background: radial-gradient(circle at center, #111827 0%, #090d16 100%);
             z-index: 40;
             overflow: hidden;
+        }
+
+        /* Dedicated Video Surface */
+        #videoLayer {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: none;
         }
 
         #remoteVideo {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            background: #000;
         }
 
+        /* Dedicated Audio Call Surface (Shown on Voice Calls) */
+        #voiceCallLayer {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .voice-avatar-glow {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 3px solid var(--neon-emerald);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 54px;
+            margin-bottom: 24px;
+            box-shadow: 0 0 40px var(--neon-emerald-glow);
+            position: relative;
+        }
+
+        .voice-peer-title {
+            font-size: 30px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .voice-call-badge {
+            font-size: 13px;
+            color: var(--neon-emerald);
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.15);
+            padding: 6px 16px;
+            border-radius: 20px;
+            margin-bottom: 24px;
+        }
+
+        /* Soundwave volume bars */
+        .live-wave-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 36px;
+        }
+
+        .live-wave-bar {
+            width: 4px;
+            height: 12px;
+            background: var(--neon-emerald);
+            border-radius: 3px;
+            transition: height 0.08s ease;
+        }
+
+        /* Video Connecting Placeholder (Prevents black screen while video connects) */
+        #videoConnectingPlaceholder {
+            position: absolute;
+            inset: 0;
+            background: rgba(9, 13, 22, 0.92);
+            backdrop-filter: blur(25px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 55;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(56, 189, 248, 0.2);
+            border-top-color: var(--neon-cyan);
+            border-radius: 50%;
+            animation: spin 1s infinite linear;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Floating Selfie Inset (PiP) */
         #localVideoWrapper {
             position: absolute;
             top: env(safe-area-inset-top, 24px);
@@ -459,6 +523,7 @@
             z-index: 60;
             background: #111;
             cursor: pointer;
+            display: none;
         }
 
         #localVideo {
@@ -467,6 +532,7 @@
             object-fit: cover;
         }
 
+        /* Top Status Pill */
         .active-call-pill {
             position: absolute;
             top: env(safe-area-inset-top, 24px);
@@ -484,6 +550,7 @@
             font-weight: 600;
         }
 
+        /* Floating Bottom Control Glass Bar */
         .floating-action-bar {
             position: absolute;
             bottom: env(safe-area-inset-bottom, 30px);
@@ -613,17 +680,14 @@
                     <span class="brand-subtitle">Encrypted Voice & Video Line</span>
                 </div>
 
-                <!-- STEALTH SHIELD BANNER (Interactive Toggle) -->
-                <div id="stealthBanner" class="stealth-status-banner" onclick="toggleStealthMode()">
+                <!-- STEALTH SHIELD BANNER -->
+                <div id="stealthBanner" class="stealth-status-banner">
                     <div class="stealth-banner-info">
                         <span class="stealth-icon-badge">🛡️</span>
                         <div>
-                            <div id="stealthStatusTitle" class="stealth-text-title">Stealth Protocol: ACTIVE</div>
-                            <div id="stealthStatusDesc" class="stealth-text-desc">Wrapped in TLS Port 443 (DPI Bypass)</div>
+                            <div class="stealth-text-title">Stealth Protocol Active</div>
+                            <div class="stealth-text-desc">Encrypted Direct & Cloud Relay Line</div>
                         </div>
-                    </div>
-                    <div class="stealth-toggle-switch">
-                        <div class="stealth-toggle-knob"></div>
                     </div>
                 </div>
 
@@ -695,11 +759,39 @@
 
         <!-- 4. ACTIVE FULLSCREEN STEALTH CALL -->
         <div id="activeCallScreen">
-            <video id="remoteVideo" autoplay playsinline></video>
+            <!-- LAYER A: FULLSCREEN VIDEO CALL SURFACE -->
+            <div id="videoLayer">
+                <video id="remoteVideo" autoplay playsinline></video>
 
-            <!-- Floating Selfie Inset -->
-            <div id="localVideoWrapper" onclick="flipCamera()" title="Tap to flip camera">
-                <video id="localVideo" autoplay playsinline muted></video>
+                <!-- Video Connecting Spinner (Shown until first video frame arrives) -->
+                <div id="videoConnectingPlaceholder">
+                    <div class="spinner"></div>
+                    <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Connecting Video Stream...</div>
+                    <div style="font-size: 13px; color: var(--text-muted);">Negotiating encrypted route</div>
+                </div>
+
+                <!-- Floating Selfie Inset -->
+                <div id="localVideoWrapper" onclick="flipCamera()" title="Tap to flip camera">
+                    <video id="localVideo" autoplay playsinline muted></video>
+                </div>
+            </div>
+
+            <!-- LAYER B: VOICE CALL SURFACE (Prevents black screen on audio calls!) -->
+            <div id="voiceCallLayer">
+                <div class="voice-avatar-glow">
+                    <span>🎙️</span>
+                </div>
+                <div id="voicePeerName" class="voice-peer-title">+91...</div>
+                <div class="voice-call-badge">🛡️ Encrypted Voice Active</div>
+                <div class="live-wave-container">
+                    <div class="live-wave-bar" id="wb1"></div>
+                    <div class="live-wave-bar" id="wb2"></div>
+                    <div class="live-wave-bar" id="wb3"></div>
+                    <div class="live-wave-bar" id="wb4"></div>
+                    <div class="live-wave-bar" id="wb5"></div>
+                    <div class="live-wave-bar" id="wb6"></div>
+                    <div class="live-wave-bar" id="wb7"></div>
+                </div>
             </div>
 
             <!-- Top Status Pill -->
@@ -740,10 +832,9 @@
             <h2 class="modal-heading">Call Tuning</h2>
 
             <div class="form-row">
-                <label>Audio Bitrate (Lower = Best on 2G/Weak Signal)</label>
+                <label>Audio Bitrate</label>
                 <select id="bitrateSelect">
-                    <option value="8000">8 kbps (Ultra-Low / Weak 2G)</option>
-                    <option value="12000" selected>12 kbps (Optimized Clear Voice)</option>
+                    <option value="12000" selected>12 kbps (Recommended)</option>
                     <option value="16000">16 kbps (High Quality)</option>
                 </select>
             </div>
@@ -751,9 +842,9 @@
             <div class="form-row">
                 <label>Video Quality</label>
                 <select id="videoQualitySelect">
-                    <option value="low" selected>360p (Saves Data / Weak Connection)</option>
-                    <option value="medium">480p (Standard Definition)</option>
-                    <option value="high">720p (High Definition)</option>
+                    <option value="low" selected>360p (Saves Data)</option>
+                    <option value="medium">480p (Standard)</option>
+                    <option value="high">720p (HD)</option>
                 </select>
             </div>
 

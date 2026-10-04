@@ -1,9 +1,8 @@
-// StealthVoice Client Engine (v4.0 - Custom Stealth Identity & Protocol)
+// StealthVoice Client Engine (v5.0 - Resilient Video & Voice Architecture)
 let ws = null;
 let pc = null;
 let localStream = null;
 let myNumber = localStorage.getItem('sv_my_number') || '';
-let isStealthMode = localStorage.getItem('sv_stealth_active') !== 'false'; // Default TRUE for UAE/strict networks
 let currentCallTarget = null;
 let isAudioMuted = false;
 let isVideoMuted = false;
@@ -14,21 +13,24 @@ let callStartTime = null;
 let callTimerInterval = null;
 let ringtoneInterval = null;
 let ringbackInterval = null;
+let waveAnimationInterval = null;
 let pendingIncomingCall = null;
 
-// Multi-network ICE configuration with OpenRelay Port 443 TLS TURNS
+// Multi-network ICE configuration with Google STUN, Cloudflare STUN, and OpenRelay TURN
 const rtcConfig = {
     iceCandidatePoolSize: 10,
+    iceTransportPolicy: 'all', // Allows direct P2P, STUN, and automatic TURN fallback
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun.cloudflare.com:3478' },
         { urls: 'stun:stun.services.mozilla.com:3478' },
         {
             urls: [
-                'turns:openrelay.metered.ca:443?transport=tcp',
+                'turn:openrelay.metered.ca:80',
                 'turn:openrelay.metered.ca:443',
-                'turn:openrelay.metered.ca:80'
+                'turns:openrelay.metered.ca:443?transport=tcp'
             ],
             username: 'openrelayproject',
             credential: 'openrelayproject'
@@ -44,9 +46,10 @@ const activeCallScreen = document.getElementById('activeCallScreen');
 const setupModal = document.getElementById('setupModal');
 const settingsModal = document.getElementById('settingsModal');
 
-const stealthBanner = document.getElementById('stealthBanner');
-const stealthStatusTitle = document.getElementById('stealthStatusTitle');
-const stealthStatusDesc = document.getElementById('stealthStatusDesc');
+const videoLayer = document.getElementById('videoLayer');
+const voiceCallLayer = document.getElementById('voiceCallLayer');
+const videoConnectingPlaceholder = document.getElementById('videoConnectingPlaceholder');
+const voicePeerName = document.getElementById('voicePeerName');
 
 const myNumberLabel = document.getElementById('myNumberLabel');
 const myNumberInput = document.getElementById('myNumberInput');
@@ -81,7 +84,6 @@ function getAudioContext() {
     return audioCtx;
 }
 
-// Futuristic cyber chime on incoming call
 function playStealthChimeNote(freq, start, duration) {
     try {
         const ctx = getAudioContext();
@@ -101,7 +103,7 @@ function playStealthChimeNote(freq, start, duration) {
 function startIncomingRingtone() {
     stopRingtones();
     const playCyberTune = () => {
-        const seq = [523.25, 659.25, 783.99, 1046.50, 783.99]; // C5, E5, G5, C6, G5
+        const seq = [523.25, 659.25, 783.99, 1046.50, 783.99];
         seq.forEach((freq, idx) => playStealthChimeNote(freq, idx * 0.12, 0.3));
     };
     playCyberTune();
@@ -135,9 +137,8 @@ function stopRingtones() {
     if (ringbackInterval) { clearInterval(ringbackInterval); ringbackInterval = null; }
 }
 
-// --- 2. Identity & Stealth Mode Toggle ---
+// --- 2. Identity & Phone Setup ---
 function checkMyNumber() {
-    updateStealthBannerUI();
     if (!myNumber) {
         setupModal.style.display = 'flex';
     } else {
@@ -160,29 +161,6 @@ function saveMyNumber() {
 function promptEditMyNumber() {
     myNumberInput.value = myNumber;
     setupModal.style.display = 'flex';
-}
-
-function toggleStealthMode() {
-    isStealthMode = !isStealthMode;
-    localStorage.setItem('sv_stealth_active', isStealthMode);
-    updateStealthBannerUI();
-    if (isStealthMode) {
-        showToast('🛡️ Stealth Protocol Active (TCP 443 Encapsulated)');
-    } else {
-        showToast('⚡ Hybrid Mode (Direct P2P)');
-    }
-}
-
-function updateStealthBannerUI() {
-    if (isStealthMode) {
-        stealthBanner.classList.remove('disabled');
-        stealthStatusTitle.innerText = 'Stealth Protocol: ACTIVE';
-        stealthStatusDesc.innerText = 'Wrapped in TLS Port 443 (DPI Bypass)';
-    } else {
-        stealthBanner.classList.add('disabled');
-        stealthStatusTitle.innerText = 'Stealth Protocol: OFF';
-        stealthStatusDesc.innerText = 'Hybrid Direct P2P Route';
-    }
 }
 
 function setPrefix(prefix) {
@@ -271,20 +249,27 @@ function connectSignaling() {
     };
 }
 
+// Pre-unlock mobile browser audio/video inside click gesture
+function unlockMediaEngine() {
+    getAudioContext();
+    remoteAudio.play().catch(()=>{});
+    remoteVideo.play().catch(()=>{});
+}
+
 // --- 4. Outgoing Call Flow ---
 async function initiateCall(type = 'video') {
     const target = targetNumberInput.value.trim();
     if (!target) return showToast('Please enter a phone number');
     if (!myNumber) return promptEditMyNumber();
 
-    getAudioContext();
+    unlockMediaEngine();
     isVideoCallActive = (type === 'video');
     currentCallTarget = target;
     candidateQueue = [];
 
     outgoingTargetText.innerText = target;
     outgoingAvatar.innerText = isVideoCallActive ? '👁️' : '🎙️';
-    outgoingStatusText.innerText = isStealthMode ? 'Routing via Stealth TLS (Port 443)...' : 'Connecting direct tunnel...';
+    outgoingStatusText.innerText = 'Connecting encrypted line...';
     outgoingScreen.style.display = 'flex';
 
     try {
@@ -336,7 +321,7 @@ function handleIncomingCall(data) {
 
 async function acceptIncomingCall() {
     stopRingtones();
-    getAudioContext();
+    unlockMediaEngine();
     incomingScreen.style.display = 'none';
 
     if (!pendingIncomingCall) return;
@@ -417,16 +402,16 @@ async function acquireLocalMedia(withVideo) {
     if (withVideo) {
         const quality = videoQualitySelect.value;
         const resMap = {
-            low: { width: 360, height: 270, frameRate: 15 },
-            medium: { width: 640, height: 480, frameRate: 24 },
-            high: { width: 1280, height: 720, frameRate: 30 }
+            low: { width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { max: 20 } },
+            medium: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 24 } },
+            high: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { max: 30 } }
         };
         const res = resMap[quality] || resMap.low;
         videoConstraints = {
             facingMode: currentFacingMode,
-            width: { ideal: res.width },
-            height: { ideal: res.height },
-            frameRate: { max: res.frameRate }
+            width: res.width,
+            height: res.height,
+            frameRate: res.frameRate
         };
     }
 
@@ -436,9 +421,12 @@ async function acquireLocalMedia(withVideo) {
     });
 
     if (withVideo) {
-        localVideoWrapper.style.display = 'block';
+        localVideo.muted = true;
+        localVideo.playsInline = true;
+        localVideo.autoplay = true;
         localVideo.srcObject = localStream;
         localVideo.play().catch(()=>{});
+        localVideoWrapper.style.display = 'block';
         camToggleBtn.style.display = 'flex';
         flipCamBtn.style.display = 'flex';
     } else {
@@ -451,32 +439,26 @@ async function acquireLocalMedia(withVideo) {
 function initPeerConnection() {
     if (pc) return;
 
-    const conf = { ...rtcConfig };
-    // STEALTH PROTOCOL: Force TCP Port 443 relay when active to bypass telecom DPI filters
-    if (isStealthMode) {
-        conf.iceTransportPolicy = 'relay';
-    }
-
-    pc = new RTCPeerConnection(conf);
+    pc = new RTCPeerConnection(rtcConfig);
 
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
     pc.ontrack = (event) => {
-        let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
-        if (!stream) {
-            if (!remoteAudio.srcObject) remoteAudio.srcObject = new MediaStream();
-            stream = remoteAudio.srcObject;
-            stream.addTrack(event.track);
-        }
+        console.log('[WebRTC] Track received:', event.track.kind);
+        const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
 
         remoteAudio.srcObject = stream;
         remoteAudio.play().catch(()=>{});
 
         if (event.track.kind === 'video' || stream.getVideoTracks().length > 0) {
             remoteVideo.srcObject = stream;
+            remoteVideo.playsInline = true;
             remoteVideo.play().catch(()=>{});
+
+            // Once remote video is active, hide connecting overlay
+            videoConnectingPlaceholder.style.display = 'none';
         }
     };
 
@@ -491,12 +473,14 @@ function initPeerConnection() {
 
     pc.oniceconnectionstatechange = () => {
         if (!pc) return;
+        console.log('[WebRTC] ICE Connection State:', pc.iceConnectionState);
         if (pc.iceConnectionState === 'disconnected') {
-            showToast('Temporary packet drop. Reconnecting...');
+            showToast('Temporary signal drop. Reconnecting...');
         }
     };
 }
 
+// Display Active Call Surface (Dedicated Voice or Video mode)
 function showActiveCallView() {
     dialerScreen.style.display = 'none';
     outgoingScreen.style.display = 'none';
@@ -504,7 +488,54 @@ function showActiveCallView() {
     activeCallScreen.style.display = 'block';
 
     activeCallPeerLabel.innerText = currentCallTarget;
+
+    if (isVideoCallActive) {
+        // VIDEO CALL MODE
+        voiceCallLayer.style.display = 'none';
+        videoLayer.style.display = 'block';
+        videoConnectingPlaceholder.style.display = 'flex';
+        localVideoWrapper.style.display = 'block';
+        if (localStream) {
+            localVideo.srcObject = localStream;
+            localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.play().catch(()=>{});
+        }
+    } else {
+        // VOICE CALL MODE (Never black screen!)
+        videoLayer.style.display = 'none';
+        voiceCallLayer.style.display = 'flex';
+        voicePeerName.innerText = currentCallTarget;
+        startWaveAnimation();
+    }
+
     startCallTimer();
+}
+
+function startWaveAnimation() {
+    if (waveAnimationInterval) clearInterval(waveAnimationInterval);
+    const bars = [
+        document.getElementById('wb1'),
+        document.getElementById('wb2'),
+        document.getElementById('wb3'),
+        document.getElementById('wb4'),
+        document.getElementById('wb5'),
+        document.getElementById('wb6'),
+        document.getElementById('wb7')
+    ];
+    waveAnimationInterval = setInterval(() => {
+        bars.forEach(bar => {
+            if (bar) {
+                const h = Math.floor(Math.random() * 26) + 6;
+                bar.style.height = `${h}px`;
+            }
+        });
+    }, 120);
+}
+
+function stopWaveAnimation() {
+    if (waveAnimationInterval) clearInterval(waveAnimationInterval);
+    waveAnimationInterval = null;
 }
 
 function startCallTimer() {
@@ -525,6 +556,7 @@ function hangupActiveCall(notifyPeer = true) {
     }
 
     stopRingtones();
+    stopWaveAnimation();
     if (callTimerInterval) clearInterval(callTimerInterval);
 
     cleanupMedia();
@@ -599,7 +631,7 @@ async function flipCamera() {
     }
 }
 
-// Safe Opus tuning for low bandwidth
+// Safe Opus tuning for low bandwidth without breaking SDP parsing
 function tuneSDP(desc) {
     try {
         const bitrate = parseInt(bitrateSelect.value, 10) || 12000;
@@ -607,10 +639,9 @@ function tuneSDP(desc) {
         const match = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
         if (match && match[1]) {
             const pt = match[1];
-            sdp = sdp.replace(new RegExp(`a=fmtp:${pt} (.*)`, 'i'), (m, p) => {
-                let clean = p.replace(/maxaveragebitrate=\d+;?/g, '').replace(/useinbandfec=\d;?/g, '').replace(/usedtx=\d;?/g, '');
-                return `a=fmtp:${pt} ${clean.trim()};maxaveragebitrate=${bitrate};useinbandfec=1;usedtx=1`;
-            });
+            if (sdp.includes(`a=fmtp:${pt}`)) {
+                sdp = sdp.replace(new RegExp(`(a=fmtp:${pt} .*)`, 'i'), `$1;maxaveragebitrate=${bitrate};useinbandfec=1;usedtx=1`);
+            }
         }
         desc.sdp = sdp;
     } catch(e) {}
@@ -620,7 +651,7 @@ function openSettings() { settingsModal.style.display = 'flex'; }
 function closeSettings() { settingsModal.style.display = 'none'; }
 function saveSettings() {
     closeSettings();
-    showToast('Tuning settings saved');
+    showToast('Settings saved');
 }
 
 function showToast(text) {
