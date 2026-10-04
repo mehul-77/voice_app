@@ -1,241 +1,391 @@
-// StealthVoice & Video Client Engine (v2.0 - Resilient WebRTC)
+// FaceTime Web Engine (v3.0 - Number-to-Number Direct Dial & FaceTime UI)
 let ws = null;
 let pc = null;
 let localStream = null;
-let audioContext = null;
-let analyser = null;
-let animFrameId = null;
-let callStartTime = null;
-let timerInterval = null;
-let isMuted = false;
+let myNumber = localStorage.getItem('ft_my_number') || '';
+let currentCallTarget = null;
+let isAudioMuted = false;
 let isVideoMuted = false;
 let isVideoCallActive = false;
 let currentFacingMode = 'user';
 let candidateQueue = [];
+let callStartTime = null;
+let callTimerInterval = null;
+let ringtoneInterval = null;
+let ringbackInterval = null;
+let pendingIncomingCall = null;
 
-// Multi-provider STUN + OpenRelay TURN (Works on 4G/5G mobile carriers & Symmetric NATs)
-const defaultIceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:stun.services.mozilla.com:3478' },
-    // Free public OpenRelay TURN servers for NAT traversal & firewall bypass
-    {
-        urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turns:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-    }
-];
+// Multi-network ICE configuration with OpenRelay TURN fallback
+const rtcConfig = {
+    iceCandidatePoolSize: 10,
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'stun:stun.services.mozilla.com:3478' },
+        {
+            urls: [
+                'turn:openrelay.metered.ca:80',
+                'turn:openrelay.metered.ca:443',
+                'turns:openrelay.metered.ca:443?transport=tcp'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
+    ]
+};
 
-// DOM Elements
-const roomInput = document.getElementById('roomInput');
-const preCallActions = document.getElementById('preCallActions');
-const inCallActions = document.getElementById('inCallActions');
-const muteBtn = document.getElementById('muteBtn');
-const videoToggleBtn = document.getElementById('videoToggleBtn');
-const flipCamBtn = document.getElementById('flipCamBtn');
-const speakerBtn = document.getElementById('speakerBtn');
-const statusBadge = document.getElementById('statusBadge');
-const statusDetail = document.getElementById('statusDetail');
-const callTimer = document.getElementById('callTimer');
-const micMeter = document.getElementById('micMeter');
-const networkModeBadge = document.getElementById('networkModeBadge');
-const videoContainer = document.getElementById('videoContainer');
-const remoteVideo = document.getElementById('remoteVideo');
-const localVideo = document.getElementById('localVideo');
-const remoteAudio = document.getElementById('remoteAudio');
+// UI Elements
+const dialerScreen = document.getElementById('dialerScreen');
+const outgoingScreen = document.getElementById('outgoingScreen');
+const incomingScreen = document.getElementById('incomingScreen');
+const activeCallScreen = document.getElementById('activeCallScreen');
+const setupModal = document.getElementById('setupModal');
 const settingsModal = document.getElementById('settingsModal');
 
-// Settings inputs
-const turnServerInput = document.getElementById('turnServerInput');
-const turnUserInput = document.getElementById('turnUserInput');
-const turnPassInput = document.getElementById('turnPassInput');
-const forceRelayCheckbox = document.getElementById('forceRelayCheckbox');
+const myNumberLabel = document.getElementById('myNumberLabel');
+const myNumberInput = document.getElementById('myNumberInput');
+const targetNumberInput = document.getElementById('targetNumberInput');
+
+const outgoingAvatar = document.getElementById('outgoingAvatar');
+const outgoingTargetText = document.getElementById('outgoingTargetText');
+const outgoingStatusText = document.getElementById('outgoingStatusText');
+
+const incomingCallerName = document.getElementById('incomingCallerName');
+const incomingCallTypeLabel = document.getElementById('incomingCallTypeLabel');
+
+const activeCallPeerLabel = document.getElementById('activeCallPeerLabel');
+const activeCallTimer = document.getElementById('activeCallTimer');
+const remoteVideo = document.getElementById('remoteVideo');
+const localVideo = document.getElementById('localVideo');
+const localVideoWrapper = document.getElementById('localVideoWrapper');
+const remoteAudio = document.getElementById('remoteAudio');
+
+const micToggleBtn = document.getElementById('micToggleBtn');
+const camToggleBtn = document.getElementById('camToggleBtn');
+const flipCamBtn = document.getElementById('flipCamBtn');
+
 const bitrateSelect = document.getElementById('bitrateSelect');
 const videoQualitySelect = document.getElementById('videoQualitySelect');
+const forceRelayCheckbox = document.getElementById('forceRelayCheckbox');
 
-function loadSettings() {
-    turnServerInput.value = localStorage.getItem('sv_turn_server') || '';
-    turnUserInput.value = localStorage.getItem('sv_turn_user') || '';
-    turnPassInput.value = localStorage.getItem('sv_turn_pass') || '';
-    forceRelayCheckbox.checked = localStorage.getItem('sv_force_relay') === 'true';
-    bitrateSelect.value = localStorage.getItem('sv_bitrate') || '12000';
-    videoQualitySelect.value = localStorage.getItem('sv_video_quality') || 'low';
-    updateRelayModeBadge();
+// --- 1. Sound Synthesizers (FaceTime Marimba & Ringback) ---
+let audioCtx = null;
+function getAudioContext() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
 }
 
-function saveSettings() {
-    localStorage.setItem('sv_turn_server', turnServerInput.value.trim());
-    localStorage.setItem('sv_turn_user', turnUserInput.value.trim());
-    localStorage.setItem('sv_turn_pass', turnPassInput.value.trim());
-    localStorage.setItem('sv_force_relay', forceRelayCheckbox.checked);
-    localStorage.setItem('sv_bitrate', bitrateSelect.value);
-    localStorage.setItem('sv_video_quality', videoQualitySelect.value);
-    updateRelayModeBadge();
-    closeSettings();
-    showToast('Settings saved!');
-}
-
-function updateRelayModeBadge() {
-    if (forceRelayCheckbox.checked) {
-        networkModeBadge.innerText = '🛡️ Stealth Relay (Port 443 Only)';
-        networkModeBadge.style.color = '#38bdf8';
-    } else {
-        networkModeBadge.innerText = '⚡ Hybrid P2P & Cloud Relay';
-        networkModeBadge.style.color = '#a3e635';
-    }
-}
-
-function openSettings() { settingsModal.style.display = 'flex'; }
-function closeSettings() { settingsModal.style.display = 'none'; }
-
-function getRtcConfig() {
-    let iceServers = [...defaultIceServers];
-    const customTurn = turnServerInput.value.trim();
-    if (customTurn) {
-        iceServers.unshift({
-            urls: customTurn.startsWith('turn') ? customTurn : `turns:${customTurn}:443?transport=tcp`,
-            username: turnUserInput.value.trim(),
-            credential: turnPassInput.value.trim()
-        });
-    }
-
-    const config = {
-        iceServers,
-        iceCandidatePoolSize: 10
-    };
-
-    if (forceRelayCheckbox.checked) {
-        config.iceTransportPolicy = 'relay';
-    }
-    return config;
-}
-
-function playTone(freq, type, duration) {
+// iOS FaceTime Ringtone Synthesizer
+function playFaceTimeRingtoneNote(freq, start, duration) {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = getAudioContext();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + duration);
-    } catch (e) {}
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration);
+    } catch(e) {}
 }
 
-function setStatus(badgeText, badgeColor, detailText) {
-    statusBadge.innerText = badgeText;
-    statusBadge.style.backgroundColor = badgeColor;
-    statusDetail.innerText = detailText;
+function startIncomingRingtone() {
+    stopRingtones();
+    const playTune = () => {
+        // Marimba melodic opening
+        const notes = [440, 554, 659, 880, 659, 880];
+        notes.forEach((freq, idx) => playFaceTimeRingtoneNote(freq, idx * 0.14, 0.25));
+    };
+    playTune();
+    ringtoneInterval = setInterval(playTune, 2800);
 }
 
-function startTimer() {
-    if (timerInterval) return; // already running
-    callStartTime = Date.now();
-    callTimer.style.display = 'block';
-    timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
-        const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
-        const secs = String(elapsed % 60).padStart(2, '0');
-        callTimer.innerText = `${mins}:${secs}`;
-    }, 1000);
+function startRingbackTone() {
+    stopRingtones();
+    const playBeep = () => {
+        try {
+            const ctx = getAudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 440;
+            gain.gain.setValueAtTime(0.12, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 1.2);
+        } catch(e) {}
+    };
+    playBeep();
+    ringbackInterval = setInterval(playBeep, 3500);
 }
 
-function stopTimer() {
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = null;
-    callStartTime = null;
-    callTimer.style.display = 'none';
-    callTimer.innerText = '00:00';
+function stopRingtones() {
+    if (ringtoneInterval) { clearInterval(ringtoneInterval); ringtoneInterval = null; }
+    if (ringbackInterval) { clearInterval(ringbackInterval); ringbackInterval = null; }
 }
 
-function setupAudioMeter(stream) {
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 64;
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        function checkVolume() {
-            if (!analyser) return;
-            analyser.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-            const avg = sum / dataArray.length;
-            const pct = Math.min(100, Math.round((avg / 128) * 100));
-            micMeter.style.width = pct + '%';
-            animFrameId = requestAnimationFrame(checkVolume);
-        }
-        checkVolume();
-    } catch (e) {}
-}
-
-// Safely tweak SDP for low bandwidth without breaking WebKit / Chrome parsers
-function tuneSDP(desc) {
-    try {
-        const targetBitrate = parseInt(bitrateSelect.value, 10) || 12000;
-        let sdp = desc.sdp;
-
-        // Match Opus payload type dynamically from rtpmap
-        const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
-        if (opusMatch && opusMatch[1]) {
-            const pt = opusMatch[1];
-            const fmtpRegex = new RegExp(`a=fmtp:${pt} (.*)`, 'i');
-            if (fmtpRegex.test(sdp)) {
-                sdp = sdp.replace(fmtpRegex, (match, params) => {
-                    let cleaned = params.replace(/maxaveragebitrate=\d+;?/g, '')
-                                        .replace(/useinbandfec=\d;?/g, '')
-                                        .replace(/usedtx=\d;?/g, '');
-                    return `a=fmtp:${pt} ${cleaned.trim()};maxaveragebitrate=${targetBitrate};useinbandfec=1;usedtx=1`;
-                });
-            } else {
-                sdp = sdp.replace(
-                    new RegExp(`(a=rtpmap:${pt} opus\/48000\/2\r?\n)`, 'i'),
-                    `$1a=fmtp:${pt} maxaveragebitrate=${targetBitrate};useinbandfec=1;usedtx=1\r\n`
-                );
-            }
-        }
-        desc.sdp = sdp;
-    } catch (e) {
-        console.warn('SDP tuning skipped:', e);
+// --- 2. Identity & Number Setup ---
+function checkMyNumber() {
+    if (!myNumber) {
+        setupModal.style.display = 'flex';
+    } else {
+        myNumberLabel.innerText = formatNumber(myNumber);
+        connectSignaling();
     }
 }
 
-// Pre-unlock mobile browser audio/video playback within user click context
-function unlockMobileAudio() {
-    try {
-        remoteAudio.play().catch(() => {});
-        remoteVideo.play().catch(() => {});
-    } catch (e) {}
+function saveMyNumber() {
+    const raw = myNumberInput.value.trim();
+    if (!raw) return showToast('Please enter your number');
+    myNumber = raw;
+    localStorage.setItem('ft_my_number', myNumber);
+    myNumberLabel.innerText = formatNumber(myNumber);
+    setupModal.style.display = 'none';
+    connectSignaling();
+    showToast('Saved! You are now online.');
 }
 
-// Start Call (Voice or Video)
-async function startCall(enableVideo = false) {
-    const room = roomInput.value.trim().toLowerCase();
-    if (!room) {
-        showToast('Please enter a room code.');
+function promptEditMyNumber() {
+    myNumberInput.value = myNumber;
+    setupModal.style.display = 'flex';
+}
+
+function formatNumber(num) {
+    if (!num) return '';
+    return num;
+}
+
+function setPrefix(prefix) {
+    targetNumberInput.value = prefix;
+    targetNumberInput.focus();
+}
+
+function copyMyCallLink() {
+    if (!myNumber) return promptEditMyNumber();
+    const link = `${location.origin}/?call=${encodeURIComponent(myNumber)}`;
+    navigator.clipboard.writeText(link).then(() => {
+        showToast('Direct call link copied! Send it on WhatsApp/SMS.');
+    }).catch(() => {
+        prompt('Copy your link:', link);
+    });
+}
+
+// --- 3. WebSocket Signaling Connection ---
+function connectSignaling() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return;
     }
 
-    // Critical for iOS Safari and Android Chrome: unlock media playback during touch gesture
-    unlockMobileAudio();
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}`);
 
-    isVideoCallActive = enableVideo;
+    ws.onopen = () => {
+        if (myNumber) {
+            ws.send(JSON.stringify({ type: 'register', number: myNumber }));
+        }
+    };
+
+    ws.onmessage = async (evt) => {
+        try {
+            const data = JSON.parse(evt.data);
+
+            switch (data.type) {
+                case 'registered':
+                    console.log('Registered on network as:', data.number);
+                    break;
+
+                case 'incoming_call':
+                    handleIncomingCall(data);
+                    break;
+
+                case 'call_ringing':
+                    outgoingStatusText.innerText = 'Ringing...';
+                    startRingbackTone();
+                    break;
+
+                case 'call_accepted':
+                    stopRingtones();
+                    await handleCallAccepted(data.sdp);
+                    break;
+
+                case 'call_declined':
+                    stopRingtones();
+                    showToast('Call declined.');
+                    hangupActiveCall(false);
+                    break;
+
+                case 'user_offline':
+                    stopRingtones();
+                    outgoingStatusText.innerText = 'Offline. Tap Share link below.';
+                    showToast(data.message);
+                    setTimeout(() => cancelOutgoingCall(), 3000);
+                    break;
+
+                case 'ice_candidate':
+                    handleRemoteIceCandidate(data.candidate);
+                    break;
+
+                case 'call_ended':
+                    stopRingtones();
+                    showToast('Call ended');
+                    hangupActiveCall(false);
+                    break;
+            }
+        } catch (e) {
+            console.error('WS parse error:', e);
+        }
+    };
+
+    ws.onclose = () => {
+        setTimeout(connectSignaling, 3000); // Auto reconnect
+    };
+}
+
+// --- 4. Outgoing Call Flow ---
+async function initiateCall(type = 'video') {
+    const target = targetNumberInput.value.trim();
+    if (!target) return showToast('Please enter a number to call');
+    if (!myNumber) return promptEditMyNumber();
+
+    getAudioContext(); // Pre-unlock audio
+    isVideoCallActive = (type === 'video');
+    currentCallTarget = target;
     candidateQueue = [];
 
-    setStatus('Requesting Access', '#f59e0b', 'Allow microphone and camera access...');
+    outgoingTargetText.innerText = formatNumber(target);
+    outgoingAvatar.innerText = target.slice(-2);
+    outgoingStatusText.innerText = 'Connecting...';
+    outgoingScreen.style.display = 'flex';
 
+    // Get User Media
+    try {
+        await acquireLocalMedia(isVideoCallActive);
+    } catch(err) {
+        cancelOutgoingCall();
+        return showToast('Microphone/Camera permission denied.');
+    }
+
+    initPeerConnection();
+
+    // Create Offer
+    const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: isVideoCallActive
+    });
+    tuneSDP(offer);
+    await pc.setLocalDescription(offer);
+
+    ws.send(JSON.stringify({
+        type: 'call_user',
+        targetNumber: target,
+        callerNumber: myNumber,
+        callType: type,
+        sdp: pc.localDescription
+    }));
+}
+
+function cancelOutgoingCall() {
+    stopRingtones();
+    outgoingScreen.style.display = 'none';
+    if (ws && currentCallTarget) {
+        ws.send(JSON.stringify({ type: 'end_call', targetNumber: currentCallTarget }));
+    }
+    cleanupMedia();
+}
+
+// --- 5. Incoming Call Flow (FaceTime Style) ---
+function handleIncomingCall(data) {
+    pendingIncomingCall = data;
+    currentCallTarget = data.caller;
+    isVideoCallActive = (data.callType === 'video');
+
+    incomingCallerName.innerText = formatNumber(data.caller);
+    incomingCallTypeLabel.innerText = isVideoCallActive ? 'FaceTime Video' : 'FaceTime Audio';
+    incomingScreen.style.display = 'flex';
+
+    startIncomingRingtone();
+}
+
+async function acceptIncomingCall() {
+    stopRingtones();
+    getAudioContext(); // Unlock audio
+    incomingScreen.style.display = 'none';
+
+    if (!pendingIncomingCall) return;
+
+    try {
+        await acquireLocalMedia(isVideoCallActive);
+    } catch(err) {
+        declineIncomingCall();
+        return showToast('Camera/Mic access is required to answer.');
+    }
+
+    initPeerConnection();
+    await pc.setRemoteDescription(new RTCSessionDescription(pendingIncomingCall.sdp));
+
+    // Drain early candidates
+    while (candidateQueue.length > 0) {
+        await pc.addIceCandidate(candidateQueue.shift());
+    }
+
+    const answer = await pc.createAnswer();
+    tuneSDP(answer);
+    await pc.setLocalDescription(answer);
+
+    ws.send(JSON.stringify({
+        type: 'accept_call',
+        sdp: pc.localDescription
+    }));
+
+    showActiveCallView();
+}
+
+function declineIncomingCall() {
+    stopRingtones();
+    incomingScreen.style.display = 'none';
+    if (ws && pendingIncomingCall) {
+        ws.send(JSON.stringify({ type: 'decline_call' }));
+    }
+    pendingIncomingCall = null;
+    cleanupMedia();
+}
+
+async function handleCallAccepted(sdp) {
+    if (!pc) return;
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+    // Drain queued candidates
+    while (candidateQueue.length > 0) {
+        await pc.addIceCandidate(candidateQueue.shift());
+    }
+
+    outgoingScreen.style.display = 'none';
+    showActiveCallView();
+}
+
+async function handleRemoteIceCandidate(candidateData) {
+    if (!candidateData) return;
+    const cand = new RTCIceCandidate(candidateData);
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+        try {
+            await pc.addIceCandidate(cand);
+        } catch(e) {
+            console.warn('ICE add error:', e);
+        }
+    } else {
+        candidateQueue.push(cand);
+    }
+}
+
+// --- 6. Media & WebRTC Management ---
+async function acquireLocalMedia(withVideo) {
     const audioConstraints = {
         echoCancellation: true,
         noiseSuppression: true,
@@ -245,236 +395,163 @@ async function startCall(enableVideo = false) {
     };
 
     let videoConstraints = false;
-    if (enableVideo) {
+    if (withVideo) {
         const quality = videoQualitySelect.value;
         const resMap = {
             low: { width: 360, height: 270, frameRate: 15 },
             medium: { width: 640, height: 480, frameRate: 24 },
             high: { width: 1280, height: 720, frameRate: 30 }
         };
-        const selectedRes = resMap[quality] || resMap.low;
-
+        const res = resMap[quality] || resMap.low;
         videoConstraints = {
             facingMode: currentFacingMode,
-            width: { ideal: selectedRes.width },
-            height: { ideal: selectedRes.height },
-            frameRate: { max: selectedRes.frameRate }
+            width: { ideal: res.width },
+            height: { ideal: res.height },
+            frameRate: { max: res.frameRate }
         };
     }
 
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: audioConstraints,
-            video: videoConstraints
-        });
+    localStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: videoConstraints
+    });
 
-        setupAudioMeter(localStream);
-
-        if (enableVideo) {
-            videoContainer.style.display = 'block';
-            localVideo.srcObject = localStream;
-            localVideo.play().catch(()=>{});
-            flipCamBtn.style.display = 'inline-flex';
-            videoToggleBtn.style.display = 'inline-flex';
-        } else {
-            videoContainer.style.display = 'none';
-            flipCamBtn.style.display = 'none';
-            videoToggleBtn.style.display = 'none';
-        }
-    } catch (err) {
-        console.error('Media error:', err);
-        setStatus('Permission Denied', '#ef4444', 'Microphone/Camera permission denied. Please allow access.');
-        return;
+    if (withVideo) {
+        localVideoWrapper.style.display = 'block';
+        localVideo.srcObject = localStream;
+        localVideo.play().catch(()=>{});
+        camToggleBtn.style.display = 'flex';
+        flipCamBtn.style.display = 'flex';
+    } else {
+        localVideoWrapper.style.display = 'none';
+        camToggleBtn.style.display = 'none';
+        flipCamBtn.style.display = 'none';
     }
-
-    preCallActions.style.display = 'none';
-    inCallActions.style.display = 'grid';
-    roomInput.disabled = true;
-
-    setStatus('Connecting Relay', '#3b82f6', 'Connecting to global signaling relay...');
-    playTone(440, 'sine', 0.2);
-
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${location.host}`);
-
-    ws.onopen = () => {
-        setStatus('Waiting for Other Device', '#f59e0b', `Room "${room}" active. Waiting for other device to tap call...`);
-        ws.send(JSON.stringify({ type: 'join', room }));
-    };
-
-    ws.onmessage = async (evt) => {
-        try {
-            const msg = JSON.parse(evt.data);
-
-            if (msg.type === 'peer_joined') {
-                setStatus('Initiating Connection', '#3b82f6', 'Other device detected! Negotiating encrypted line...');
-                initPeer();
-                const offer = await pc.createOffer({
-                    offerToReceiveAudio: true,
-                    offerToReceiveVideo: isVideoCallActive
-                });
-                tuneSDP(offer);
-                await pc.setLocalDescription(offer);
-                ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
-            } else if (msg.type === 'signal') {
-                const signal = msg.data;
-
-                // Handle SDP offer / answer
-                if (signal.sdp) {
-                    if (!pc) initPeer();
-
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-
-                    // DRAIN queued ICE candidates now that remote description is set!
-                    while (candidateQueue.length > 0) {
-                        const queuedCandidate = candidateQueue.shift();
-                        try {
-                            await pc.addIceCandidate(queuedCandidate);
-                        } catch (err) {
-                            console.warn('Queued ICE candidate error:', err);
-                        }
-                    }
-
-                    if (signal.sdp.type === 'offer') {
-                        const answer = await pc.createAnswer();
-                        tuneSDP(answer);
-                        await pc.setLocalDescription(answer);
-                        ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
-                    }
-                }
-
-                // Handle ICE candidate
-                if (signal.candidate) {
-                    const candidate = new RTCIceCandidate(signal.candidate);
-                    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-                        try {
-                            await pc.addIceCandidate(candidate);
-                        } catch (e) {
-                            console.warn('ICE add error:', e);
-                        }
-                    } else {
-                        // Queue candidate until setRemoteDescription finishes!
-                        candidateQueue.push(candidate);
-                    }
-                }
-            } else if (msg.type === 'peer_left') {
-                setStatus('Disconnected', '#ef4444', 'The other device hung up or left.');
-                playTone(300, 'sawtooth', 0.3);
-                endCall(false);
-            }
-        } catch (err) {
-            console.error('Signaling processing error:', err);
-        }
-    };
-
-    ws.onerror = () => setStatus('Network Error', '#ef4444', 'Could not reach server.');
-    ws.onclose = () => {
-        if (callStartTime) setStatus('Disconnected', '#64748b', 'Connection closed.');
-    };
 }
 
-function initPeer() {
+function initPeerConnection() {
     if (pc) return;
 
-    const config = getRtcConfig();
-    pc = new RTCPeerConnection(config);
-
-    // Attach all local audio/video tracks
-    if (localStream) {
-        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    const conf = { ...rtcConfig };
+    if (forceRelayCheckbox.checked) {
+        conf.iceTransportPolicy = 'relay';
     }
 
-    // Modern Unified-Plan track handler
-    pc.ontrack = (event) => {
-        console.log('[WebRTC] Received remote track:', event.track.kind);
+    pc = new RTCPeerConnection(conf);
 
+    if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    pc.ontrack = (event) => {
         let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
         if (!stream) {
-            if (!remoteAudio.srcObject) {
-                remoteAudio.srcObject = new MediaStream();
-            }
+            if (!remoteAudio.srcObject) remoteAudio.srcObject = new MediaStream();
             stream = remoteAudio.srcObject;
             stream.addTrack(event.track);
         }
 
         remoteAudio.srcObject = stream;
-        remoteAudio.play().catch((e) => console.log('Audio autoplay error:', e));
+        remoteAudio.play().catch(()=>{});
 
         if (event.track.kind === 'video' || stream.getVideoTracks().length > 0) {
-            videoContainer.style.display = 'block';
             remoteVideo.srcObject = stream;
-            remoteVideo.play().catch((e) => console.log('Video autoplay error:', e));
+            remoteVideo.play().catch(()=>{});
         }
-
-        setStatus('Connected & Encrypted', '#10b981', 'Voice & video stream active.');
-        startTimer();
     };
 
-    // Forward ICE candidate to remote peer
     pc.onicecandidate = (event) => {
         if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
-                type: 'signal',
-                data: { candidate: event.candidate }
+                type: 'ice_candidate',
+                candidate: event.candidate
             }));
         }
     };
 
     pc.oniceconnectionstatechange = () => {
         if (!pc) return;
-        const state = pc.iceConnectionState;
-        console.log('[WebRTC] ICE Connection State:', state);
-
-        if (state === 'connected' || state === 'completed') {
-            setStatus('Connected & Encrypted', '#10b981', 'Direct / Relay voice stream active.');
-        } else if (state === 'checking') {
-            setStatus('Connecting Pathway', '#3b82f6', 'Testing direct P2P & relay pathways...');
-        } else if (state === 'disconnected') {
-            setStatus('Reconnecting...', '#f59e0b', 'Packet drop detected. Re-establishing audio...');
-        } else if (state === 'failed') {
-            setStatus('Connection Failed', '#ef4444', 'Could not establish pathway. Check internet signal.');
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            showToast('Reconnecting pathway...');
         }
     };
 }
 
-// Toggle Mic Mute
+function showActiveCallView() {
+    dialerScreen.style.display = 'none';
+    outgoingScreen.style.display = 'none';
+    incomingScreen.style.display = 'none';
+    activeCallScreen.style.display = 'block';
+
+    activeCallPeerLabel.innerText = formatNumber(currentCallTarget);
+    startCallTimer();
+}
+
+function startCallTimer() {
+    callStartTime = Date.now();
+    activeCallTimer.innerText = '00:00';
+    if (callTimerInterval) clearInterval(callTimerInterval);
+    callTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+        const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const secs = String(elapsed % 60).padStart(2, '0');
+        activeCallTimer.innerText = `${mins}:${secs}`;
+    }, 1000);
+}
+
+function hangupActiveCall(notifyPeer = true) {
+    if (notifyPeer && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'end_call' }));
+    }
+
+    stopRingtones();
+    if (callTimerInterval) clearInterval(callTimerInterval);
+
+    cleanupMedia();
+
+    activeCallScreen.style.display = 'none';
+    outgoingScreen.style.display = 'none';
+    incomingScreen.style.display = 'none';
+    dialerScreen.style.display = 'flex';
+}
+
+function cleanupMedia() {
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+    }
+    if (pc) {
+        pc.close();
+        pc = null;
+    }
+    candidateQueue = [];
+    currentCallTarget = null;
+    pendingIncomingCall = null;
+    isAudioMuted = false;
+    isVideoMuted = false;
+    micToggleBtn.classList.remove('active-off');
+    camToggleBtn.classList.remove('active-off');
+}
+
+// In-Call Controls
 function toggleMute() {
     if (!localStream) return;
-    isMuted = !isMuted;
-    localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-
-    if (isMuted) {
-        muteBtn.innerText = '🔇 Unmute';
-        muteBtn.style.backgroundColor = '#475569';
-        showToast('Mic Muted');
-    } else {
-        muteBtn.innerText = '🎤 Mute';
-        muteBtn.style.backgroundColor = '#1e293b';
-        showToast('Mic Active');
-    }
+    isAudioMuted = !isAudioMuted;
+    localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
+    micToggleBtn.classList.toggle('active-off', isAudioMuted);
+    showToast(isAudioMuted ? 'Muted' : 'Mic Active');
 }
 
-// Toggle Video On/Off
-function toggleVideo() {
+function toggleCamera() {
     if (!localStream) return;
-    const videoTracks = localStream.getVideoTracks();
-    if (videoTracks.length === 0) return;
-
+    const vTracks = localStream.getVideoTracks();
+    if (vTracks.length === 0) return;
     isVideoMuted = !isVideoMuted;
-    videoTracks.forEach(t => t.enabled = !isVideoMuted);
-
-    if (isVideoMuted) {
-        videoToggleBtn.innerText = '📷 Cam On';
-        videoToggleBtn.style.backgroundColor = '#475569';
-        showToast('Camera Turned Off');
-    } else {
-        videoToggleBtn.innerText = '📷 Cam Off';
-        videoToggleBtn.style.backgroundColor = '#1e293b';
-        showToast('Camera Turned On');
-    }
+    vTracks.forEach(t => t.enabled = !isVideoMuted);
+    camToggleBtn.classList.toggle('active-off', isVideoMuted);
+    showToast(isVideoMuted ? 'Camera Off' : 'Camera On');
 }
 
-// Flip Camera (Front / Back on Mobile)
 async function flipCamera() {
     if (!localStream || !isVideoCallActive) return;
     currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
@@ -483,83 +560,66 @@ async function flipCamera() {
         const newStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: currentFacingMode }
         });
-        const newVideoTrack = newStream.getVideoTracks()[0];
+        const newTrack = newStream.getVideoTracks()[0];
 
         if (pc) {
             const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-            if (sender) sender.replaceTrack(newVideoTrack);
+            if (sender) sender.replaceTrack(newTrack);
         }
 
         localStream.getVideoTracks().forEach(t => t.stop());
         localStream.removeTrack(localStream.getVideoTracks()[0]);
-        localStream.addTrack(newVideoTrack);
+        localStream.addTrack(newTrack);
         localVideo.srcObject = localStream;
         localVideo.play().catch(()=>{});
 
-        showToast(currentFacingMode === 'user' ? 'Front Camera' : 'Rear Camera');
-    } catch (e) {
-        console.warn('Could not flip camera:', e);
+        showToast(currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera');
+    } catch(e) {
+        console.warn('Flip camera error:', e);
     }
 }
 
-function toggleSpeaker() {
-    showToast('Audio playing through speaker');
+// Safe Opus tuning for low bandwidth
+function tuneSDP(desc) {
+    try {
+        const bitrate = parseInt(bitrateSelect.value, 10) || 12000;
+        let sdp = desc.sdp;
+        const match = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
+        if (match && match[1]) {
+            const pt = match[1];
+            sdp = sdp.replace(new RegExp(`a=fmtp:${pt} (.*)`, 'i'), (m, p) => {
+                let clean = p.replace(/maxaveragebitrate=\d+;?/g, '').replace(/useinbandfec=\d;?/g, '').replace(/usedtx=\d;?/g, '');
+                return `a=fmtp:${pt} ${clean.trim()};maxaveragebitrate=${bitrate};useinbandfec=1;usedtx=1`;
+            });
+        }
+        desc.sdp = sdp;
+    } catch(e) {}
 }
 
-function endCall(sendLeave = true) {
-    if (sendLeave && ws && ws.readyState === WebSocket.OPEN) {
-        try { ws.send(JSON.stringify({ type: 'leave' })); } catch (e) {}
-    }
-
-    if (animFrameId) cancelAnimationFrame(animFrameId);
-    micMeter.style.width = '0%';
-
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-    }
-
-    if (audioContext) {
-        audioContext.close().catch(() => {});
-        audioContext = null;
-    }
-
-    if (pc) {
-        pc.close();
-        pc = null;
-    }
-
-    if (ws) {
-        ws.close();
-        ws = null;
-    }
-
-    candidateQueue = [];
-    stopTimer();
-    preCallActions.style.display = 'grid';
-    inCallActions.style.display = 'none';
-    videoContainer.style.display = 'none';
-    roomInput.disabled = false;
-
-    if (isMuted) toggleMute();
-    if (isVideoMuted) toggleVideo();
-
-    if (!statusDetail.innerText.includes('hung up') && !statusDetail.innerText.includes('left')) {
-        setStatus('Ready', '#64748b', 'Choose Voice or Video call to start.');
-    }
+function openSettings() { settingsModal.style.display = 'flex'; }
+function closeSettings() { settingsModal.style.display = 'none'; }
+function saveSettings() {
+    closeSettings();
+    showToast('Settings saved');
 }
 
 function showToast(text) {
     const toast = document.getElementById('toast');
     toast.innerText = text;
     toast.style.opacity = '1';
-    setTimeout(() => { toast.style.opacity = '0'; }, 2200);
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    }, 2400);
 }
 
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
-    });
-}
-
-loadSettings();
+// Auto join if URL has ?call=number
+window.addEventListener('load', () => {
+    checkMyNumber();
+    const params = new URLSearchParams(location.search);
+    if (params.has('call')) {
+        targetNumberInput.value = params.get('call');
+        showToast('Contact loaded from link. Tap Audio or FaceTime to call!');
+    }
+});

@@ -5,23 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#0a0e17">
+    <meta name="theme-color" content="#000000">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon.svg">
     <link rel="icon" type="image/svg+xml" href="/icon.svg">
-    <title>StealthVoice & Video — Encrypted Calling</title>
+    <title>FaceTime Web</title>
     <style>
         :root {
-            --bg-color: #0a0e17;
-            --card-bg: #141b2d;
-            --card-border: #1e293b;
-            --accent-green: #10b981;
-            --accent-green-hover: #059669;
-            --accent-red: #ef4444;
-            --accent-red-hover: #dc2626;
-            --accent-blue: #38bdf8;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
+            --bg-black: #000000;
+            --surface-glass: rgba(28, 28, 30, 0.75);
+            --surface-glass-border: rgba(255, 255, 255, 0.12);
+            --ios-green: #34c759;
+            --ios-green-active: #28a745;
+            --ios-red: #ff3b30;
+            --ios-red-active: #d70015;
+            --ios-blue: #007aff;
+            --ios-gray-btn: rgba(255, 255, 255, 0.18);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.6);
         }
 
         * {
@@ -29,440 +30,662 @@
             margin: 0;
             padding: 0;
             -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
         }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 16px;
-        }
-
-        .phone-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
+        body, html {
             width: 100%;
-            max-width: 440px;
-            padding: 24px 20px;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
-            position: relative;
+            height: 100%;
+            background-color: var(--bg-black);
+            color: var(--text-primary);
             overflow: hidden;
+            position: fixed;
+            inset: 0;
+        }
+
+        /* Fullscreen View Container */
+        .app-viewport {
+            width: 100%;
+            height: 100%;
+            position: relative;
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
+            padding: env(safe-area-inset-top, 20px) 20px env(safe-area-inset-bottom, 20px) 20px;
         }
 
-        .header {
+        /* 1. DIALER & HOME SCREEN */
+        #dialerScreen {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        .home-topbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            padding: 10px 0;
         }
 
-        .logo-area {
+        .my-identity-pill {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--surface-glass-border);
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
         }
 
-        .logo-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-        }
-
-        .app-title {
-            font-size: 19px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-        }
-
-        .settings-btn {
-            background: #1e293b;
-            border: none;
-            color: var(--text-muted);
-            width: 36px;
-            height: 36px;
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--ios-green);
             border-radius: 50%;
-            cursor: pointer;
+            box-shadow: 0 0 8px var(--ios-green);
+        }
+
+        .icon-btn {
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--surface-glass-border);
+            color: var(--text-primary);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 17px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .dialer-main {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+        }
+
+        .facetime-title {
+            font-size: 34px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .country-chips {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .chip {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
             transition: all 0.2s;
         }
 
-        .settings-btn:hover {
-            background: #334155;
-            color: #fff;
+        .chip:hover, .chip.active {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.3);
         }
 
-        .network-badge {
-            align-self: flex-start;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: #1e293b;
-            margin-bottom: 16px;
-        }
-
-        /* Video Area */
-        .video-container {
+        .number-input-wrapper {
             width: 100%;
-            height: 240px;
-            background: #090d16;
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
             position: relative;
-            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .phone-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 16px 20px;
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .phone-input:focus {
+            border-color: var(--ios-green);
+        }
+
+        .facetime-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            width: 100%;
+        }
+
+        .ft-btn {
+            background: var(--ios-green);
+            color: #ffffff;
+            border: none;
+            border-radius: 16px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(52, 199, 89, 0.3);
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        .ft-btn:active {
+            transform: scale(0.97);
+            background: var(--ios-green-active);
+        }
+
+        .link-share-bar {
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .btn-link-share {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--ios-blue);
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 2. OUTGOING CALLING OVERLAY */
+        #outgoingScreen {
             display: none;
-            margin-bottom: 16px;
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            z-index: 50;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 20px;
+        }
+
+        .outgoing-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 40px;
+        }
+
+        .avatar-circle {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 42px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .avatar-pulse {
+            position: absolute;
+            inset: -12px;
+            border-radius: 50%;
+            border: 2px solid rgba(52, 199, 89, 0.6);
+            animation: pulseWave 1.8s infinite ease-out;
+        }
+
+        @keyframes pulseWave {
+            0% { transform: scale(0.9); opacity: 1; }
+            100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        .call-target-name {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .call-state-text {
+            font-size: 15px;
+            color: var(--text-secondary);
+        }
+
+        /* 3. INCOMING CALL SCREEN (FACETIME STYLE) */
+        #incomingScreen {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(50px);
+            -webkit-backdrop-filter: blur(50px);
+            z-index: 100;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 80px 24px 60px 24px;
+        }
+
+        .incoming-actions {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .action-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .circle-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            color: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            transition: transform 0.1s;
+        }
+
+        .circle-btn:active {
+            transform: scale(0.92);
+        }
+
+        .btn-decline { background: var(--ios-red); }
+        .btn-accept { background: var(--ios-green); }
+
+        .action-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        /* 4. ACTIVE CALL VIEW (FULLSCREEN FACETIME) */
+        #activeCallScreen {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: #000;
+            z-index: 40;
+            overflow: hidden;
         }
 
         #remoteVideo {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            background: #050811;
+            background: #050505;
+        }
+
+        /* Floating Self View (PiP Inset) */
+        #localVideoWrapper {
+            position: absolute;
+            top: env(safe-area-inset-top, 20px);
+            right: 16px;
+            width: 105px;
+            height: 155px;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            z-index: 60;
+            background: #1c1c1e;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        #localVideoWrapper:active {
+            transform: scale(0.96);
         }
 
         #localVideo {
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            width: 80px;
-            height: 110px;
-            object-fit: cover;
-            border-radius: 10px;
-            border: 2px solid #38bdf8;
-            background: #111;
-            z-index: 10;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
-        }
-
-        .input-group {
-            margin-bottom: 16px;
-            text-align: left;
-        }
-
-        .input-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-            display: block;
-        }
-
-        .room-input {
             width: 100%;
-            padding: 12px 14px;
-            border-radius: 12px;
-            border: 1px solid var(--card-border);
-            background: #0f172a;
-            color: var(--text-main);
-            font-size: 15px;
-            font-weight: 600;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        .room-input:focus {
-            border-color: var(--accent-blue);
-        }
-
-        .call-timer {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--accent-green);
-            margin: 10px 0 6px 0;
-            display: none;
-            font-variant-numeric: tabular-nums;
-            text-align: center;
-        }
-
-        .mic-meter-container {
-            width: 100%;
-            height: 5px;
-            background: #1e293b;
-            border-radius: 4px;
-            margin: 12px 0;
-            overflow: hidden;
-        }
-
-        .mic-meter-bar {
             height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, #10b981, #38bdf8);
-            transition: width 0.05s ease;
+            object-fit: cover;
         }
 
-        .call-actions-pre {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .call-actions-in {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .btn {
-            padding: 14px;
-            border-radius: 12px;
-            border: none;
-            font-size: 15px;
+        /* Top Active Call Pill */
+        .call-header-pill {
+            position: absolute;
+            top: env(safe-area-inset-top, 20px);
+            left: 16px;
+            background: var(--surface-glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--surface-glass-border);
+            padding: 8px 14px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 60;
+            font-size: 13px;
             font-weight: 600;
-            cursor: pointer;
+        }
+
+        /* Floating Bottom Controls Pill (FaceTime Bar) */
+        .floating-controls-bar {
+            position: absolute;
+            bottom: env(safe-area-inset-bottom, 30px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface-glass);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--surface-glass-border);
+            border-radius: 36px;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 70;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        }
+
+        .ft-control-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            border: none;
+            background: var(--ios-gray-btn);
+            color: #ffffff;
+            font-size: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
-            transition: transform 0.1s, background-color 0.2s;
+            cursor: pointer;
+            transition: all 0.15s;
         }
 
-        .btn:active {
-            transform: scale(0.97);
+        .ft-control-btn:active {
+            transform: scale(0.92);
         }
 
-        .btn-voice { background-color: var(--accent-green); color: white; }
-        .btn-video { background-color: #2563eb; color: white; }
-        .btn-hangup { background-color: var(--accent-red); color: white; grid-column: span 2; }
-        .btn-ctrl { background-color: #1e293b; color: white; }
-
-        .status-box {
-            margin-top: 16px;
-            background: #0f172a;
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 12px;
-            text-align: left;
+        .ft-control-btn.btn-hangup {
+            background: var(--ios-red);
         }
 
-        .status-badge {
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 6px;
-            color: white;
-            margin-bottom: 4px;
-            background: #64748b;
+        .ft-control-btn.active-off {
+            background: #ffffff;
+            color: #000000;
         }
 
-        .status-detail {
-            font-size: 12px;
-            color: var(--text-muted);
-            line-height: 1.4;
-        }
-
-        /* Modal */
+        /* Settings Modal */
         .modal {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(4px);
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(20px);
             display: none;
             justify-content: center;
             align-items: center;
-            z-index: 100;
-            padding: 16px;
+            z-index: 200;
+            padding: 20px;
         }
 
-        .modal-content {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 20px;
+        .modal-card {
+            background: #1c1c1e;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
             width: 100%;
-            max-width: 380px;
+            max-width: 360px;
             padding: 24px;
         }
 
         .modal-title {
-            font-size: 17px;
+            font-size: 20px;
             font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
             margin-bottom: 16px;
         }
 
-        .setting-field {
-            margin-bottom: 14px;
-            text-align: left;
-        }
-
-        .setting-field label {
+        .form-group label {
             display: block;
             font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 4px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .setting-field input, .setting-field select {
+        .form-group input, .form-group select {
             width: 100%;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid var(--card-border);
-            background: #0f172a;
-            color: white;
-            font-size: 14px;
-        }
-
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 16px 0;
-            font-size: 13px;
-            cursor: pointer;
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 18px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #fff;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 15px;
+            outline: none;
         }
 
         .toast {
             position: fixed;
-            bottom: 24px;
+            top: 24px;
             left: 50%;
             transform: translateX(-50%);
-            background: #334155;
+            background: rgba(44, 44, 46, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
+            padding: 10px 20px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.3s;
-            z-index: 200;
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 300;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
         }
     </style>
 </head>
 <body>
-    <div class="phone-card">
-        <div class="header">
-            <div class="logo-area">
-                <img src="/icon.svg" class="logo-icon" alt="Logo">
-                <span class="app-title">StealthVoice & Video</span>
+    <div class="app-viewport">
+        <!-- 1. HOME & NUMBER DIALER SCREEN -->
+        <div id="dialerScreen">
+            <div class="home-topbar">
+                <div class="my-identity-pill" onclick="promptEditMyNumber()">
+                    <span class="online-dot"></span>
+                    <span id="myNumberLabel">Setting up...</span>
+                    <span style="opacity: 0.5; font-size: 11px;">✏️</span>
+                </div>
+                <button class="icon-btn" onclick="openSettings()" title="Network & Firewall Settings">⚙️</button>
             </div>
-            <button class="settings-btn" onclick="openSettings()" title="Network & Firewall Settings">⚙️</button>
+
+            <div class="dialer-main">
+                <h1 class="facetime-title">FaceTime</h1>
+
+                <!-- Country Prefix Selector -->
+                <div class="country-chips">
+                    <button class="chip" onclick="setPrefix('+971')">🇦🇪 +971 (UAE)</button>
+                    <button class="chip" onclick="setPrefix('+91')">🇮🇳 +91 (India)</button>
+                    <button class="chip" onclick="setPrefix('+')">🌐 Global</button>
+                </div>
+
+                <div class="number-input-wrapper">
+                    <input type="tel" id="targetNumberInput" class="phone-input" placeholder="Enter phone number..." autocomplete="off">
+                </div>
+
+                <div class="facetime-buttons">
+                    <button class="ft-btn" onclick="initiateCall('voice')">
+                        <span>📞 Audio</span>
+                    </button>
+                    <button class="ft-btn" onclick="initiateCall('video')">
+                        <span>📹 FaceTime</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="link-share-bar">
+                <button class="btn-link-share" onclick="copyMyCallLink()">
+                    <span>🔗 Share My Direct Call Link</span>
+                </button>
+            </div>
         </div>
 
-        <div id="networkModeBadge" class="network-badge">⚡ Hybrid P2P / Direct</div>
+        <!-- 2. OUTGOING CALLING OVERLAY -->
+        <div id="outgoingScreen">
+            <div class="outgoing-info">
+                <div class="avatar-circle">
+                    <div class="avatar-pulse"></div>
+                    <span id="outgoingAvatar">👤</span>
+                </div>
+                <div id="outgoingTargetText" class="call-target-name">+971 50 ...</div>
+                <div id="outgoingStatusText" class="call-state-text">Calling...</div>
+            </div>
+            <div class="action-column" onclick="cancelOutgoingCall()">
+                <button class="circle-btn btn-decline">✕</button>
+                <span class="action-label">Cancel</span>
+            </div>
+        </div>
 
-        <!-- Video Call Screens -->
-        <div id="videoContainer" class="video-container">
+        <!-- 3. INCOMING CALL SCREEN (APPLE FACETIME STYLE) -->
+        <div id="incomingScreen">
+            <div class="outgoing-info">
+                <div class="avatar-circle">
+                    <div class="avatar-pulse"></div>
+                    <span id="incomingAvatar">📞</span>
+                </div>
+                <div id="incomingCallerName" class="call-target-name">+91 98765...</div>
+                <div id="incomingCallTypeLabel" class="call-state-text">Incoming FaceTime Video...</div>
+            </div>
+
+            <div class="incoming-actions">
+                <div class="action-column" onclick="declineIncomingCall()">
+                    <button class="circle-btn btn-decline">✕</button>
+                    <span class="action-label">Decline</span>
+                </div>
+                <div class="action-column" onclick="acceptIncomingCall()">
+                    <button class="circle-btn btn-accept">✓</button>
+                    <span class="action-label">Accept</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. ACTIVE FULL-SCREEN FACETIME CALL SCREEN -->
+        <div id="activeCallScreen">
             <video id="remoteVideo" autoplay playsinline></video>
-            <video id="localVideo" autoplay playsinline muted></video>
+
+            <!-- Self View Inset (Floating PiP) -->
+            <div id="localVideoWrapper" onclick="flipCamera()" title="Tap to flip camera">
+                <video id="localVideo" autoplay playsinline muted></video>
+            </div>
+
+            <!-- Top Call Header Pill -->
+            <div class="call-header-pill">
+                <span id="activeCallPeerLabel">+91...</span>
+                <span>•</span>
+                <span id="activeCallTimer" style="color:var(--ios-green)">00:00</span>
+                <span>🔒</span>
+            </div>
+
+            <!-- Bottom Floating Controls Glass Bar -->
+            <div class="floating-controls-bar">
+                <button id="micToggleBtn" class="ft-control-btn" onclick="toggleMute()" title="Mute Microphone">🎤</button>
+                <button id="camToggleBtn" class="ft-control-btn" onclick="toggleCamera()" title="Camera On/Off">📷</button>
+                <button id="flipCamBtn" class="ft-control-btn" onclick="flipCamera()" title="Flip Camera">🔄</button>
+                <button class="ft-control-btn btn-hangup" onclick="hangupActiveCall()" title="End Call">🔴</button>
+            </div>
         </div>
-
-        <div class="input-group">
-            <label class="input-label" for="roomInput">Private Room Line</label>
-            <input type="text" id="roomInput" class="room-input" placeholder="e.g. secret-line-1" value="secret-line-1">
-        </div>
-
-        <div id="callTimer" class="call-timer">00:00</div>
-
-        <div class="mic-meter-container" title="Audio Activity">
-            <div id="micMeter" class="mic-meter-bar"></div>
-        </div>
-
-        <!-- Before Call Actions -->
-        <div id="preCallActions" class="call-actions-pre">
-            <button class="btn btn-voice" onclick="startCall(false)">
-                <span>📞 Voice Call</span>
-            </button>
-            <button class="btn btn-video" onclick="startCall(true)">
-                <span>📹 Video Call</span>
-            </button>
-        </div>
-
-        <!-- In-Call Actions -->
-        <div id="inCallActions" class="call-actions-in" style="display: none;">
-            <button id="muteBtn" class="btn btn-ctrl" onclick="toggleMute()">
-                <span>🎤 Mute</span>
-            </button>
-            <button id="videoToggleBtn" class="btn btn-ctrl" onclick="toggleVideo()">
-                <span>📷 Cam Off</span>
-            </button>
-            <button id="flipCamBtn" class="btn btn-ctrl" onclick="flipCamera()">
-                <span>🔄 Flip</span>
-            </button>
-            <button id="speakerBtn" class="btn btn-ctrl" onclick="toggleSpeaker()">
-                <span>🔊 Speaker</span>
-            </button>
-            <button class="btn btn-hangup" onclick="endCall()">
-                <span>🔴 Hang Up</span>
-            </button>
-        </div>
-
-        <div class="status-box">
-            <span id="statusBadge" class="status-badge">Ready</span>
-            <div id="statusDetail" class="status-detail">Choose Voice or Video call to start.</div>
-        </div>
-
-        <audio id="remoteAudio" autoplay playsinline></audio>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settingsModal" class="modal">
-        <div class="modal-content">
-            <h3 class="modal-title">Firewall & Codec Settings</h3>
+    <!-- Setup My Number Modal -->
+    <div id="setupModal" class="modal">
+        <div class="modal-card">
+            <h2 class="modal-title">Your Phone Number</h2>
+            <p style="font-size:13px; color:var(--text-secondary); text-align:center; margin-bottom:18px;">
+                Enter your number so contacts in UAE / India can call your device directly.
+            </p>
+            <div class="form-group">
+                <input type="tel" id="myNumberInput" placeholder="e.g. +91 98765 43210" value="">
+            </div>
+            <button class="ft-btn" style="width:100%" onclick="saveMyNumber()">Save & Go Online</button>
+        </div>
+    </div>
 
-            <div class="setting-field">
-                <label>Audio Bitrate (Lower = Best on 2G/Weak Signal)</label>
+    <!-- Firewall & Quality Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-card">
+            <h2 class="modal-title">Settings</h2>
+
+            <div class="form-group">
+                <label>Audio Bitrate (Lower = Best on Weak Signal)</label>
                 <select id="bitrateSelect">
-                    <option value="8000">8 kbps (Ultra-Low / Weakest Signal)</option>
-                    <option value="12000" selected>12 kbps (Recommended Clear Voice)</option>
+                    <option value="8000">8 kbps (Ultra-Low 2G/3G)</option>
+                    <option value="12000" selected>12 kbps (Clear Opus Voice)</option>
                     <option value="16000">16 kbps (High Quality)</option>
                 </select>
             </div>
 
-            <div class="setting-field">
-                <label>Video Quality Mode</label>
+            <div class="form-group">
+                <label>Video Quality</label>
                 <select id="videoQualitySelect">
-                    <option value="low" selected>Low (360p / 15fps - Saves Data)</option>
-                    <option value="medium">Medium (480p / 24fps)</option>
-                    <option value="high">Standard (720p / 30fps)</option>
+                    <option value="low" selected>360p (Saves Data / Weak Connection)</option>
+                    <option value="medium">480p (Standard FaceTime)</option>
+                    <option value="high">720p (HD Video)</option>
                 </select>
             </div>
 
-            <label class="checkbox-row">
-                <input type="checkbox" id="forceRelayCheckbox">
-                <span><strong>Force Stealth Relay (Port 443)</strong><br><small style="color:var(--text-muted)">Bypasses UAE/ISP VoIP blocks by wrapping traffic in TLS</small></span>
-            </label>
-
-            <div class="setting-field">
-                <label>Custom TURN Server (e.g. standard.metered.ca:443)</label>
-                <input type="text" id="turnServerInput" placeholder="turns:your-turn-host:443?transport=tcp">
+            <div style="display:flex; align-items:center; gap:10px; margin: 16px 0;">
+                <input type="checkbox" id="forceRelayCheckbox" style="width:18px; height:18px;">
+                <label for="forceRelayCheckbox" style="margin:0; font-size:13px; color:#fff;">Force Stealth Relay (Port 443 TLS)</label>
             </div>
 
-            <div class="setting-field">
-                <label>TURN Username</label>
-                <input type="text" id="turnUserInput" placeholder="Metered / Custom username">
-            </div>
-
-            <div class="setting-field">
-                <label>TURN Credential / Password</label>
-                <input type="password" id="turnPassInput" placeholder="Metered / Custom password">
-            </div>
-
-            <div class="modal-actions">
-                <button class="btn btn-voice" style="padding:10px; width:50%;" onclick="saveSettings()">Save</button>
-                <button class="btn btn-ctrl" style="padding:10px; width:50%;" onclick="closeSettings()">Cancel</button>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="ft-btn" style="width:50%;" onclick="saveSettings()">Save</button>
+                <button class="ft-btn" style="width:50%; background:rgba(255,255,255,0.15);" onclick="closeSettings()">Cancel</button>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast">Settings updated</div>
+    <div id="toast" class="toast">Toast Message</div>
+    <audio id="remoteAudio" autoplay playsinline></audio>
 
     <script src="/app.js"></script>
 </body>
