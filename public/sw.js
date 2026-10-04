@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stealthvoice-v1';
+const CACHE_NAME = 'stealthvoice-v2';
 const ASSETS = [
     '/',
     '/index.html',
@@ -26,7 +26,6 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Only cache GET requests, bypass for websockets
     if (event.request.method !== 'GET' || event.request.url.startsWith('ws')) {
         return;
     }
